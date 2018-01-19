@@ -99,7 +99,12 @@ class StochasticDropoutNet:
                              for i in xrange(self.unroll_steps)]
         
         # define unrolling optimizers
-        w_opt = tf.keras.optimizers.Adam()
+        #self.global_epoch = tf.Variable(0, name='global_epoch', trainable=False)
+        #boundaries = [200, 300]
+        #values = [0.0001, 0.00005, 0.00002]
+        #learning_rate = tf.train.piecewise_constant(self.global_epoch, boundaries, values)
+        #self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
+        w_opt = tf.keras.optimizers.Adagrad()
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
         
@@ -125,10 +130,14 @@ class StochasticDropoutNet:
             var_clipped = tf.clip_by_value(var, self.min_dropout_rate, self.max_dropout_rate)
             self.struct_clip_op.append(tf.assign(var, var_clipped))
         
+        # Add ops to save and restore all the variables.
+        self.saver = tf.train.Saver()
+        
         # define session
         self.sess = tf.Session()
         
         # initialize all the parameters
+        #self.sess.run(self.global_epoch.initializer)
         self.sess.run(tf.global_variables_initializer())
         
         # optimizer counters
@@ -180,8 +189,8 @@ class StochasticDropoutNet:
         
         # generate weight parameters
         with tf.variable_scope(var_scope):
-            w = tf.get_variable('weights', 
-                                [filter_height, filter_width, num_in_filters, num_filters])
+            w_shape = [filter_height, filter_width, num_in_filters, num_filters]
+            w = tf.get_variable('weights', initializer=tf.truncated_normal(w_shape, stddev=0.1))
             self.weights += [w]
           
             
@@ -198,8 +207,7 @@ class StochasticDropoutNet:
         # apply bias
         if bias:
             with tf.variable_scope(var_scope):
-                b = tf.get_variable('biases',
-                                    shape = out_shape_list[1:])
+                b = tf.get_variable('biases', initializer=tf.constant(0.1, shape=out_shape_list[1:]))
                 self.weights += [b]
             _conv_output = _conv_output + b
         
@@ -601,6 +609,12 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
+                    #self.sess.run(self.increment_global_epoch_op)
+                    # Save the variables to disk.
+                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_ep{}.ckpt".format(epoch_id))
+                    print("Model saved in file: %s" % save_path)
+                    
+                    
                     
                 if epoch_id >= num_epochs:
                     break
@@ -750,12 +764,14 @@ class StochasticDropoutNet:
                              var_scope = 'conv0',
                              residual = False,
                              padding = 'SAME',
-                             act_fun = tf.nn.softplus)
+                             act_fun = tf.nn.softplus,
+                             bias = True)
         hidden = self.conv2d(hidden, 5, 5, 128, 
                              var_scope = 'conv1',
                              residual = True,
                              padding = 'SAME',
-                             act_fun = tf.nn.softplus)
+                             act_fun = tf.nn.softplus,
+                             bias = True)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
         
@@ -763,12 +779,14 @@ class StochasticDropoutNet:
                              var_scope = 'conv2',
                              residual = True,
                              padding = 'SAME',
-                             act_fun = tf.nn.softplus)
+                             act_fun = tf.nn.softplus,
+                             bias = True)
         hidden = self.conv2d(hidden, 5, 5, 128, 
                              var_scope = 'conv3',
                              residual = True,
                              padding = 'SAME',
-                             act_fun = tf.nn.softplus)
+                             act_fun = tf.nn.softplus,
+                             bias = True)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
         
