@@ -73,7 +73,7 @@ class StochasticDropoutNet:
         
         # define optimizer & gradients
         self.optimizer_weight = tf.train.AdamOptimizer()
-        self.optimizer_struct = tf.train.AdamOptimizer(learning_rate = 0.05)
+        self.optimizer_struct = tf.train.AdamOptimizer(learning_rate = 0.00001)
         self.weight_gradients = tf.gradients(self.loss, self.weights)
         self.struct_gradients = tf.gradients(self.loss_modified, self.struct_param)
         self.log_p_grad = tf.gradients(self.log_p, self.struct_param)
@@ -99,12 +99,12 @@ class StochasticDropoutNet:
                              for i in xrange(self.unroll_steps)]
         
         # define unrolling optimizers
-        #self.global_epoch = tf.Variable(0, name='global_epoch', trainable=False)
+        self.global_epoch = tf.Variable(0, name='global_epoch', trainable=False)
         #boundaries = [200, 300]
         #values = [0.0001, 0.00005, 0.00002]
         #learning_rate = tf.train.piecewise_constant(self.global_epoch, boundaries, values)
-        #self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
-        w_opt = tf.keras.optimizers.Adagrad()
+        self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
+        w_opt = tf.keras.optimizers.Adam()
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
         
@@ -131,13 +131,13 @@ class StochasticDropoutNet:
             self.struct_clip_op.append(tf.assign(var, var_clipped))
         
         # Add ops to save and restore all the variables.
-        self.saver = tf.train.Saver()
+        self.saver = tf.train.Saver(max_to_keep=50)
         
         # define session
         self.sess = tf.Session()
         
         # initialize all the parameters
-        #self.sess.run(self.global_epoch.initializer)
+        self.sess.run(self.global_epoch.initializer)
         self.sess.run(tf.global_variables_initializer())
         
         # optimizer counters
@@ -599,7 +599,11 @@ class StochasticDropoutNet:
                                                                                                   w_id,
                                                                                                   loss,
                                                                                                   accuracy))
-                
+                # print struct param
+                #if batch_id % 100 == 0:
+                #    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+                #    print('struct_param_value = {}'.format(struct_param_value))
+                    
                 # increment the counters
                 batch_id = batch_id + 1
                 if batch_id >= num_train_batches:
@@ -609,9 +613,9 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
-                    #self.sess.run(self.increment_global_epoch_op)
+                    self.sess.run(self.increment_global_epoch_op)
                     # Save the variables to disk.
-                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_ep{}.ckpt".format(epoch_id))
+                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_unroll", global_step=self.global_epoch)
                     print("Model saved in file: %s" % save_path)
                     
                     
@@ -645,8 +649,13 @@ class StochasticDropoutNet:
                                  list(train_targets[selected_tokens_train,...])))
             self.sess.run(self.struct_train_op,
                           feed_dict = feed_dict)
+            
+            struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+            print('struct_param_value = {}'.format(struct_param_value))
             self.sess.run(self.struct_clip_op,
                           feed_dict = feed_dict)
+            
+            
             
             # increment the counters
             struct_step_id += 1
@@ -722,7 +731,7 @@ class StochasticDropoutNet:
                                                                                                   w_id,
                                                                                                   loss,
                                                                                                   accuracy))
-                
+   
                 # increment the counters
                 batch_id = batch_id + 1
                 if batch_id >= num_train_batches:
@@ -732,6 +741,8 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
+                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_fine", global_step=epoch_id)
+                    print("Model saved in file: %s" % save_path)
                     
                 if epoch_id >= num_epochs:
                     break
