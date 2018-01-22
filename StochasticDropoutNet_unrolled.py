@@ -57,7 +57,7 @@ class StochasticDropoutNet:
         self.weight_delta_max_count = weight_delta_max_count
         
         # build the network
-        self.build_graph()
+        self.build_graph_test()
         
         # define modified loss for REINFORCE
         self.log_p_per_example \
@@ -99,7 +99,8 @@ class StochasticDropoutNet:
                              for i in xrange(self.unroll_steps)]
         
         # define unrolling optimizers
-        w_opt = tf.keras.optimizers.Adam()
+        #### test!!! change back to Adam
+        w_opt = tf.keras.optimizers.Adam(lr = 0.01)
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
         
@@ -107,6 +108,8 @@ class StochasticDropoutNet:
         cur_update_dict = graph_replace(update_dict, 
                                         {self.inputs: self.inputs_adapt[0],
                                          self.targets: self.targets_adapt[0]})
+        ##### test!!
+        self.weights_adapt = [[cur_update_dict[w.value()] for w in self.weights]]
         for i in xrange(self.unroll_steps-1):
             # Change the inputs
             update_dict_adapt = graph_replace(update_dict, 
@@ -114,6 +117,10 @@ class StochasticDropoutNet:
                                                self.targets: self.targets_adapt[i+1]})
             # Compute variable updates given the previous iteration's updated variable
             cur_update_dict = graph_replace(update_dict_adapt, cur_update_dict)
+            
+            ###### test!!!
+            self.weights_adapt.append([cur_update_dict[w.value()] for w in self.weights])
+            
         # Final unrolled loss uses the parameters at the last time step
         self.unrolled_loss = graph_replace(self.loss, cur_update_dict)
         self.struct_train_op = tf.train.AdamOptimizer(learning_rate = 0.05)\
@@ -812,4 +819,20 @@ class StochasticDropoutNet:
         assert hasattr(self, "loss_per_example"), \
             "self.loss_per_example undefined"
         
+    def build_graph_test(self):
+        self.inputs = tf.placeholder(tf.float32, shape = [None, 1, 1, 1], name = 'inputs')
+        self.targets = tf.placeholder(tf.float32, shape = [None, 1, 1, 1], name = 'targets')
         
+        hidden = self.conv2d(self.inputs, 1, 1, 1,
+                             var_scope = 'conv0',
+                             residual = True,
+                             padding = 'VALID',
+                             act_fun = None)
+        outputs = self.conv2d(hidden, 1, 1, 1,
+                              var_scope = 'output',
+                              residual = False,
+                              padding = 'VALID',
+                              dropout = False,
+                              act_fun = None)
+        
+        self.loss_per_example = tf.square(outputs[:, 0, 0, 0])
