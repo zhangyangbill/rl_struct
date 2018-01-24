@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import random
 from util import LBFGS, graph_replace, extract_update_dict
+from optimizers import Adagrad, Adam
 
 class StochasticDropoutNet:
     def __init__(self,
@@ -51,10 +52,6 @@ class StochasticDropoutNet:
         self.min_init_dropout_rate = min_init_dropout_rate
         self.max_init_dropout_rate = max_init_dropout_rate
         
-        # define lists for weight delta and weight grad delta
-        self.weight_delta = []
-        self.weight_grad_delta = []
-        self.weight_delta_max_count = weight_delta_max_count
         
         # build the network
         self.build_graph()
@@ -64,13 +61,10 @@ class StochasticDropoutNet:
         = sum([tf.reduce_sum(tf.log(pp) * (1 - kk) + tf.log(1 - pp) * kk,
                              axis = [1,2,3]) 
                for pp, kk in zip(self.struct_param, self.keeps)])
-        self.log_p = tf.reduce_mean(self.log_p_per_example)
         # multiply a phantom term log_p to compute gradient over struct_param
         self.loss = tf.reduce_mean(self.loss_per_example * 
                                    (tf.stop_gradient(1 - self.log_p_per_example)
                                     + self.log_p_per_example))
-        self.loss_modified = tf.reduce_mean(self.log_p_per_example * self.loss_per_example)
-        
         
         
         # define unrolling parameters
@@ -88,14 +82,22 @@ class StochasticDropoutNet:
         #values = [0.0001, 0.00005, 0.00002]
         #learning_rate = tf.train.piecewise_constant(self.global_epoch, boundaries, values)
         self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
-        w_opt = tf.keras.optimizers.Adagrad(lr = 0.00001)
+        w_opt = Adagrad(lr = 0.00001)
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
         
         update_dict = extract_update_dict(updates)
+        
+        
         cur_update_dict = graph_replace(update_dict, 
                                         {self.inputs: self.inputs_adapt[0],
                                          self.targets: self.targets_adapt[0]})
+        
+        ## test!!! ##
+        self.cur_update_dict = [cur_update_dict]
+        
+        #### test!!! ####
+        self.weights_adapt = [[cur_update_dict[v.value()] for v in self.weights]]
         for i in xrange(self.unroll_steps-1):
             # Change the inputs
             update_dict_adapt = graph_replace(update_dict, 
@@ -103,6 +105,12 @@ class StochasticDropoutNet:
                                                self.targets: self.targets_adapt[i+1]})
             # Compute variable updates given the previous iteration's updated variable
             cur_update_dict = graph_replace(update_dict_adapt, cur_update_dict)
+            
+            ##### test!!! ####
+            self.weights_adapt.append([cur_update_dict[v.value()] for v in self.weights])
+            self.cur_update_dict.append(cur_update_dict)
+            
+        
         # Final unrolled loss uses the parameters at the last time step
         self.unrolled_loss = graph_replace(self.loss, cur_update_dict)
         self.struct_train_op = tf.train.AdamOptimizer(learning_rate = 0.001)\
@@ -121,7 +129,6 @@ class StochasticDropoutNet:
         self.sess = tf.Session()
         
         # initialize all the parameters
-        self.sess.run(self.global_epoch.initializer)
         self.sess.run(tf.global_variables_initializer())
         
         # optimizer counters
@@ -233,8 +240,8 @@ class StochasticDropoutNet:
             output = output + inputs
             
         return output
-    
 
+    
                     
     def train_unroll(self,
                      train_inputs,
@@ -299,9 +306,8 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
-                    self.sess.run(self.increment_global_epoch_op)
                     # Save the variables to disk.
-                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_unroll", global_step=self.global_epoch)
+                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_unroll", global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                     
@@ -483,6 +489,7 @@ class StochasticDropoutNet:
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = False)
+
         hidden = self.conv2d(hidden, 5, 5, 128, 
                              var_scope = 'conv3',
                              residual = True,
@@ -491,8 +498,9 @@ class StochasticDropoutNet:
                              bias = False)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
+
         
-        hidden = self.conv2d(hidden, 7, 7, 2048, 
+        hidden = self.conv2d(hidden, 14, 14, 2048,
                              var_scope = 'fully_connect0',
                              residual = False,
                              padding = 'VALID',
@@ -503,6 +511,7 @@ class StochasticDropoutNet:
                              residual = True,
                              act_fun = tf.nn.softplus,
                              bias = False)
+
         logits = self.conv2d(hidden, 1, 1, 10, 
                              var_scope = 'output',
                              residual = False,
