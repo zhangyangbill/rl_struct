@@ -12,7 +12,9 @@ mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
 model = StochasticDropoutNet(min_init_dropout_rate = 0.2, 
                              max_init_dropout_rate = 0.3,
                              train_batch_size = 50,
-                             valid_batch_size = 100)
+                             valid_batch_size = 100,
+                             unroll_steps = 2,
+                             num_weight_train_steps = 4)
 
 #states = tf.train.get_checkpoint_stat('/mnt/hdd1/kqian3/rl_struct')
 #checkpoint_paths = states.all_model_checkpoint_paths
