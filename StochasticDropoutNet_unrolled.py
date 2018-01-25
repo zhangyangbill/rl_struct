@@ -291,8 +291,8 @@ class StochasticDropoutNet:
                                                                                                   accuracy))
                 # print struct param
                 if batch_id % 100 == 0:
-                    #struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
-                    #print('struct_param_value = {}'.format(struct_param_value))
+                    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+                    print('struct_param_value = {}'.format(struct_param_value))
                     print('test accuracy %g' % self.sess.run(self.accuracy, feed_dict={self.inputs: inputs_test,
                                                                                       self.targets: targets_test}))
                     
@@ -306,7 +306,7 @@ class StochasticDropoutNet:
                     struct_step_id = 0
                     epoch_id += 1
                     # Save the variables to disk.
-                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_unroll", global_step=epoch_id)
+                    save_path = self.saver.save(self.sess, "./models/", global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                     
@@ -338,18 +338,15 @@ class StochasticDropoutNet:
                                   valid_targets[selected_tokens_valid,...]] +
                                  list(train_inputs[selected_tokens_train,...]) +
                                  list(train_targets[selected_tokens_train,...])))
-            #self.sess.run(self.struct_train_op,
-            #              feed_dict = feed_dict)
+            self.sess.run(self.struct_train_op,
+                          feed_dict = feed_dict)
             
             #if struct_step_id % 100 == 0:
             #    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
             #    print('struct_param_value = {}'.format(struct_param_value))
             
-            #bias_value = self.sess.run([self.weights[-1], self.weights[-3]], feed_dict = feed_dict)
-            #print('bias_value = {}'.format(bias_value))
-            
-            #self.sess.run(self.struct_clip_op,
-            #              feed_dict = feed_dict)
+            self.sess.run(self.struct_clip_op,
+                          feed_dict = feed_dict)
             
             
             
@@ -437,7 +434,7 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
-                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_fine", global_step=epoch_id)
+                    save_path = self.saver.save(self.sess, "./models/", global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                 if epoch_id >= num_epochs:
