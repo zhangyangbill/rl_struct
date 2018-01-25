@@ -3,6 +3,7 @@ import numpy as np
 import random
 from util import LBFGS, graph_replace, extract_update_dict
 from optimizers import Adagrad, Adam
+from tensorflow.examples.tutorials.mnist import input_data
 
 class StochasticDropoutNet:
     def __init__(self,
@@ -82,7 +83,7 @@ class StochasticDropoutNet:
         #values = [0.0001, 0.00005, 0.00002]
         #learning_rate = tf.train.piecewise_constant(self.global_epoch, boundaries, values)
         self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
-        w_opt = Adam()
+        w_opt = Adagrad()
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
         
@@ -251,6 +252,11 @@ class StochasticDropoutNet:
         num_epochs - number of epochs
         '''
         
+        # define dataset
+        mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
+        inputs_test, targets_test = mnist.test.next_batch(10000)
+        inputs_test = inputs_test.reshape((-1, 28, 28, 1))
+                
         # determine number of tokens
         num_tokens_train = train_inputs.shape[0]
         num_tokens_valid = valid_inputs.shape[0]
@@ -284,9 +290,11 @@ class StochasticDropoutNet:
                                                                                                   loss,
                                                                                                   accuracy))
                 # print struct param
-                #if batch_id % 100 == 0:
-                #    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
-                #    print('struct_param_value = {}'.format(struct_param_value))
+                if batch_id % 100 == 0:
+                    #struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+                    #print('struct_param_value = {}'.format(struct_param_value))
+                    print('test accuracy %g' % self.sess.run(self.accuracy, feed_dict={self.inputs: inputs_test,
+                                                                                      self.targets: targets_test}))
                     
                 # increment the counters
                 batch_id = batch_id + 1
@@ -459,12 +467,12 @@ class StochasticDropoutNet:
         self.inputs = tf.placeholder(tf.float32, shape = [None, 28, 28, 1], name = 'inputs')
         self.targets = tf.placeholder(tf.int32, shape = [None,], name = 'targets')
         
-        hidden = self.conv2d(self.inputs, 5, 5, 64, 
+        hidden = self.conv2d(self.inputs, 5, 5, 32, 
                              var_scope = 'conv0',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
-                             bias = False)
+                             bias = True)
         #hidden = self.conv2d(hidden, 5, 5, 128, 
         #                     var_scope = 'conv1',
         #                     residual = True,
@@ -476,10 +484,10 @@ class StochasticDropoutNet:
         
         hidden = self.conv2d(hidden, 5, 5, 64, 
                              var_scope = 'conv2',
-                             residual = True,
+                             residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
-                             bias = False)
+                             bias = True)
 
         #hidden = self.conv2d(hidden, 5, 5, 128, 
         #                     var_scope = 'conv3',
@@ -496,23 +504,23 @@ class StochasticDropoutNet:
                              residual = False,
                              padding = 'VALID',
                              act_fun = tf.nn.softplus,
-                             bias = False)
-        hidden = self.conv2d(hidden, 1, 1, 1024, 
-                             var_scope = 'fully_connect1',
-                             residual = True,
-                             act_fun = tf.nn.softplus,
-                             bias = False)
+                             bias = True)
+        #hidden = self.conv2d(hidden, 1, 1, 1024, 
+        #                     var_scope = 'fully_connect1',
+        #                     residual = True,
+        #                     act_fun = tf.nn.softplus,
+        #                     bias = False)
 
-        logits = self.conv2d(hidden, 1, 1, 5, 
+        logits = self.conv2d(hidden, 1, 1, 10, 
                              var_scope = 'output',
                              residual = False,
                              act_fun = None,
                              dropout = False,
-                             bias = False)
+                             bias = True)
         
         self.logits = logits[:, 0, 0, :]
         self.target_one_hot = tf.one_hot(self.targets,
-                                         depth = 5)
+                                         depth = 10)
         self.loss_per_example = tf.nn.softmax_cross_entropy_with_logits(logits = self.logits,
                                                                         labels = self.target_one_hot)
         
