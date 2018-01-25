@@ -10,8 +10,8 @@ class StochasticDropoutNet:
                  valid_batch_size = 32,
                  num_weight_train_steps = 4,
                  weight_delta_max_count = 128,
-                 min_dropout_rate = 0.01,
-                 max_dropout_rate = 0.99,
+                 min_dropout_rate = 0.0001,
+                 max_dropout_rate = 0.9999,
                  min_init_dropout_rate = 0.2,
                  max_init_dropout_rate = 0.8,
                  unroll_steps = 3):
@@ -82,7 +82,7 @@ class StochasticDropoutNet:
         #values = [0.0001, 0.00005, 0.00002]
         #learning_rate = tf.train.piecewise_constant(self.global_epoch, boundaries, values)
         self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
-        w_opt = Adagrad(lr = 0.00001)
+        w_opt = Adam()
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
         
@@ -93,11 +93,6 @@ class StochasticDropoutNet:
                                         {self.inputs: self.inputs_adapt[0],
                                          self.targets: self.targets_adapt[0]})
         
-        ## test!!! ##
-        self.cur_update_dict = [cur_update_dict]
-        
-        #### test!!! ####
-        self.weights_adapt = [[cur_update_dict[v.value()] for v in self.weights]]
         for i in xrange(self.unroll_steps-1):
             # Change the inputs
             update_dict_adapt = graph_replace(update_dict, 
@@ -105,10 +100,6 @@ class StochasticDropoutNet:
                                                self.targets: self.targets_adapt[i+1]})
             # Compute variable updates given the previous iteration's updated variable
             cur_update_dict = graph_replace(update_dict_adapt, cur_update_dict)
-            
-            ##### test!!! ####
-            self.weights_adapt.append([cur_update_dict[v.value()] for v in self.weights])
-            self.cur_update_dict.append(cur_update_dict)
             
         
         # Final unrolled loss uses the parameters at the last time step
@@ -339,18 +330,18 @@ class StochasticDropoutNet:
                                   valid_targets[selected_tokens_valid,...]] +
                                  list(train_inputs[selected_tokens_train,...]) +
                                  list(train_targets[selected_tokens_train,...])))
-            self.sess.run(self.struct_train_op,
-                          feed_dict = feed_dict)
+            #self.sess.run(self.struct_train_op,
+            #              feed_dict = feed_dict)
             
-            if struct_step_id % 100 == 0:
-                struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
-                print('struct_param_value = {}'.format(struct_param_value))
+            #if struct_step_id % 100 == 0:
+            #    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+            #    print('struct_param_value = {}'.format(struct_param_value))
             
             #bias_value = self.sess.run([self.weights[-1], self.weights[-3]], feed_dict = feed_dict)
             #print('bias_value = {}'.format(bias_value))
             
-            self.sess.run(self.struct_clip_op,
-                          feed_dict = feed_dict)
+            #self.sess.run(self.struct_clip_op,
+            #              feed_dict = feed_dict)
             
             
             
@@ -468,51 +459,51 @@ class StochasticDropoutNet:
         self.inputs = tf.placeholder(tf.float32, shape = [None, 28, 28, 1], name = 'inputs')
         self.targets = tf.placeholder(tf.int32, shape = [None,], name = 'targets')
         
-        hidden = self.conv2d(self.inputs, 5, 5, 128, 
+        hidden = self.conv2d(self.inputs, 5, 5, 64, 
                              var_scope = 'conv0',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = False)
-        hidden = self.conv2d(hidden, 5, 5, 128, 
-                             var_scope = 'conv1',
-                             residual = True,
-                             padding = 'SAME',
-                             act_fun = tf.nn.softplus,
-                             bias = False)
+        #hidden = self.conv2d(hidden, 5, 5, 128, 
+        #                     var_scope = 'conv1',
+        #                     residual = True,
+        #                     padding = 'SAME',
+        #                     act_fun = tf.nn.softplus,
+        #                     bias = False)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
         
-        hidden = self.conv2d(hidden, 5, 5, 128, 
+        hidden = self.conv2d(hidden, 5, 5, 64, 
                              var_scope = 'conv2',
                              residual = True,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = False)
 
-        hidden = self.conv2d(hidden, 5, 5, 128, 
-                             var_scope = 'conv3',
-                             residual = True,
-                             padding = 'SAME',
-                             act_fun = tf.nn.softplus,
-                             bias = False)
+        #hidden = self.conv2d(hidden, 5, 5, 128, 
+        #                     var_scope = 'conv3',
+        #                     residual = True,
+        #                     padding = 'SAME',
+        #                     act_fun = tf.nn.softplus,
+        #                     bias = False)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
 
         
-        hidden = self.conv2d(hidden, 14, 14, 2048,
+        hidden = self.conv2d(hidden, 7, 7, 1024,
                              var_scope = 'fully_connect0',
                              residual = False,
                              padding = 'VALID',
                              act_fun = tf.nn.softplus,
                              bias = False)
-        hidden = self.conv2d(hidden, 1, 1, 2048, 
+        hidden = self.conv2d(hidden, 1, 1, 1024, 
                              var_scope = 'fully_connect1',
                              residual = True,
                              act_fun = tf.nn.softplus,
                              bias = False)
 
-        logits = self.conv2d(hidden, 1, 1, 10, 
+        logits = self.conv2d(hidden, 1, 1, 5, 
                              var_scope = 'output',
                              residual = False,
                              act_fun = None,
@@ -521,7 +512,7 @@ class StochasticDropoutNet:
         
         self.logits = logits[:, 0, 0, :]
         self.target_one_hot = tf.one_hot(self.targets,
-                                         depth = 10)
+                                         depth = 5)
         self.loss_per_example = tf.nn.softmax_cross_entropy_with_logits(logits = self.logits,
                                                                         labels = self.target_one_hot)
         

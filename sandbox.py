@@ -9,11 +9,11 @@ from util import xor_data, extract_update_dict
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
 
-model = StochasticDropoutNet(min_init_dropout_rate = 0.2, 
-                             max_init_dropout_rate = 0.3,
+model = StochasticDropoutNet(min_init_dropout_rate = 0.001, 
+                             max_init_dropout_rate = 0.001,
                              train_batch_size = 50,
                              valid_batch_size = 100,
-                             unroll_steps = 2,
+                             unroll_steps = 3,
                              num_weight_train_steps = 4)
 
 #states = tf.train.get_checkpoint_stat('/mnt/hdd1/kqian3/rl_struct')
