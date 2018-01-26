@@ -105,7 +105,7 @@ class StochasticDropoutNet:
         
         # Final unrolled loss uses the parameters at the last time step
         self.unrolled_loss = graph_replace(self.loss, cur_update_dict)
-        self.struct_train_op = tf.train.AdamOptimizer(learning_rate = 0.001)\
+        self.struct_train_op = tf.train.AdamOptimizer(learning_rate = 0.01)\
                                 .minimize(self.unrolled_loss,
                                           var_list = self.struct_param)
         # clip the value
@@ -291,10 +291,18 @@ class StochasticDropoutNet:
                                                                                                   accuracy))
                 # print struct param
                 if batch_id % 100 == 0:
-                    #struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
-                    #print('struct_param_value = {}'.format(struct_param_value))
-                    print('test accuracy %g' % self.sess.run(self.accuracy, feed_dict={self.inputs: inputs_test,
-                                                                                      self.targets: targets_test}))
+                    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+                    print('struct_param_value = {}'.format(struct_param_value))
+                    
+                    accs = []
+                    for i in range(10):
+                        feed_dict = {self.inputs: inputs_test[i*1000:(i+1)*1000, ...], 
+                                     self.targets: targets_test[i*1000:(i+1)*1000, ...]}
+                        acc = self.sess.run(self.accuracy, feed_dict=feed_dict)
+                        accs.append(acc)
+                    print('Test accuracy ={}'.format(sum(accs)/10))
+                    
+                    
                     
                 # increment the counters
                 batch_id = batch_id + 1
@@ -315,58 +323,59 @@ class StochasticDropoutNet:
                     break
                     
             ###### perform struct training
-            selected_tokens_valid = random.sample(array_num_tokens_valid, 
-                                                  self.valid_batch_size)
-            # locate the data for unroll weight training steps
-            # special handling at the boundary between epochs
-            selected_tokens_train = [shuffle[b * self.train_batch_size :
-                                             (b+1) * self.train_batch_size]
-                                     for b in xrange(batch_id, 
-                                                     min(batch_id+self.unroll_steps,
-                                                         num_train_batches))] + \
-                                    [shuffle_next[b * self.train_batch_size :
-                                             (b+1) * self.train_batch_size]
-                                     for b in xrange(self.unroll_steps 
-                                                     - min(batch_id+self.unroll_steps,
-                                                           num_train_batches)
-                                                     + batch_id)]
-            feed_dict = dict(zip([self.inputs,
-                                  self.targets] +
-                                 self.inputs_adapt +
-                                 self.targets_adapt,
-                                 [valid_inputs[selected_tokens_valid,...],
-                                  valid_targets[selected_tokens_valid,...]] +
-                                 list(train_inputs[selected_tokens_train,...]) +
-                                 list(train_targets[selected_tokens_train,...])))
-            #self.sess.run(self.struct_train_op,
-            #              feed_dict = feed_dict)
-            
-            #if struct_step_id % 100 == 0:
-            #    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
-            #    print('struct_param_value = {}'.format(struct_param_value))
-            
-            #bias_value = self.sess.run([self.weights[-1], self.weights[-3]], feed_dict = feed_dict)
-            #print('bias_value = {}'.format(bias_value))
-            
-            #self.sess.run(self.struct_clip_op,
-            #              feed_dict = feed_dict)
-            
-            
-            
-            # increment the counters
-            struct_step_id += 1
-            
-            # ouput training information
-            loss, accuracy, struct_param = self.sess.run([self.loss, 
-                                                          self.accuracy,
-                                                          self.struct_param],
-                                                         feed_dict = feed_dict)
-            print('Epoch {}, struct train step {}, loss = {}, accuracy = {}'.format(epoch_id,
-                                                                                    struct_step_id,
-                                                                                    loss,
-                                                                                    accuracy))
-            #print(struct_param)
-            self.struct_param_value = struct_param
+            if epoch_id >= 50:
+                selected_tokens_valid = random.sample(array_num_tokens_valid, 
+                                                      self.valid_batch_size)
+                # locate the data for unroll weight training steps
+                # special handling at the boundary between epochs
+                selected_tokens_train = [shuffle[b * self.train_batch_size :
+                                                 (b+1) * self.train_batch_size]
+                                         for b in xrange(batch_id, 
+                                                         min(batch_id+self.unroll_steps,
+                                                             num_train_batches))] + \
+                                        [shuffle_next[b * self.train_batch_size :
+                                                 (b+1) * self.train_batch_size]
+                                         for b in xrange(self.unroll_steps 
+                                                         - min(batch_id+self.unroll_steps,
+                                                               num_train_batches)
+                                                         + batch_id)]
+                feed_dict = dict(zip([self.inputs,
+                                      self.targets] +
+                                     self.inputs_adapt +
+                                     self.targets_adapt,
+                                     [valid_inputs[selected_tokens_valid,...],
+                                      valid_targets[selected_tokens_valid,...]] +
+                                     list(train_inputs[selected_tokens_train,...]) +
+                                     list(train_targets[selected_tokens_train,...])))
+                self.sess.run(self.struct_train_op,
+                              feed_dict = feed_dict)
+                
+                #if struct_step_id % 100 == 0:
+                #    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+                #    print('struct_param_value = {}'.format(struct_param_value))
+                
+                #bias_value = self.sess.run([self.weights[-1], self.weights[-3]], feed_dict = feed_dict)
+                #print('bias_value = {}'.format(bias_value))
+                
+                self.sess.run(self.struct_clip_op,
+                              feed_dict = feed_dict)
+                
+                
+                
+                # increment the counters
+                struct_step_id += 1
+                
+                # ouput training information
+                loss, accuracy, struct_param = self.sess.run([self.loss, 
+                                                              self.accuracy,
+                                                              self.struct_param],
+                                                             feed_dict = feed_dict)
+                print('Epoch {}, struct train step {}, loss = {}, accuracy = {}'.format(epoch_id,
+                                                                                        struct_step_id,
+                                                                                        loss,
+                                                                                        accuracy))
+                #print(struct_param)
+                self.struct_param_value = struct_param
                             
     
     def train_fine_tune(self,
@@ -467,49 +476,49 @@ class StochasticDropoutNet:
         self.inputs = tf.placeholder(tf.float32, shape = [None, 28, 28, 1], name = 'inputs')
         self.targets = tf.placeholder(tf.int32, shape = [None,], name = 'targets')
         
-        hidden = self.conv2d(self.inputs, 5, 5, 32, 
+        hidden = self.conv2d(self.inputs, 5, 5, 64, 
                              var_scope = 'conv0',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = True)
-        #hidden = self.conv2d(hidden, 5, 5, 128, 
-        #                     var_scope = 'conv1',
-        #                     residual = True,
-        #                     padding = 'SAME',
-        #                     act_fun = tf.nn.softplus,
-        #                     bias = False)
+        hidden = self.conv2d(hidden, 5, 5, 64, 
+                             var_scope = 'conv1',
+                             residual = True,
+                             padding = 'SAME',
+                             act_fun = tf.nn.softplus,
+                             bias = True)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
         
-        hidden = self.conv2d(hidden, 5, 5, 64, 
+        hidden = self.conv2d(hidden, 5, 5, 128, 
                              var_scope = 'conv2',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = True)
 
-        #hidden = self.conv2d(hidden, 5, 5, 128, 
-        #                     var_scope = 'conv3',
-        #                     residual = True,
-        #                     padding = 'SAME',
-        #                     act_fun = tf.nn.softplus,
-        #                     bias = False)
+        hidden = self.conv2d(hidden, 5, 5, 128, 
+                             var_scope = 'conv3',
+                             residual = True,
+                             padding = 'SAME',
+                             act_fun = tf.nn.softplus,
+                             bias = True)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
 
         
-        hidden = self.conv2d(hidden, 7, 7, 1024,
+        hidden = self.conv2d(hidden, 7, 7, 2048,
                              var_scope = 'fully_connect0',
                              residual = False,
                              padding = 'VALID',
                              act_fun = tf.nn.softplus,
                              bias = True)
-        #hidden = self.conv2d(hidden, 1, 1, 1024, 
-        #                     var_scope = 'fully_connect1',
-        #                     residual = True,
-        #                     act_fun = tf.nn.softplus,
-        #                     bias = False)
+        hidden = self.conv2d(hidden, 1, 1, 2048, 
+                             var_scope = 'fully_connect1',
+                             residual = True,
+                             act_fun = tf.nn.softplus,
+                             bias = True)
 
         logits = self.conv2d(hidden, 1, 1, 10, 
                              var_scope = 'output',
