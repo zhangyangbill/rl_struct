@@ -5,7 +5,6 @@ from util import LBFGS, graph_replace, extract_update_dict
 from optimizers import Adagrad, Adam
 from tensorflow.examples.tutorials.mnist import input_data
 
-LOG_DIR = "/mnt/hdd1/kqian3/rl_struct/"
 
 class StochasticDropoutNet:
     def __init__(self,
@@ -18,7 +17,8 @@ class StochasticDropoutNet:
                  min_init_dropout_rate = 0.2,
                  max_init_dropout_rate = 0.8,
                  unroll_steps = 3,
-                 head = 0):
+                 head = 0,
+                 log_dir = ""):
         ''' Initialize the class
         
         Args:
@@ -37,7 +37,7 @@ class StochasticDropoutNet:
         max_init_dropout_rate - the maximum initial dropout probability allowed
         unroll_steps - the number of unrolled steps
         '''
-        
+        self.LOG_DIR = log_dir
         
         # arrays recording network weights and structural parameters
         self.weights = []
@@ -94,7 +94,7 @@ class StochasticDropoutNet:
         #boundaries = [200, 300]
         #values = [0.0001, 0.00005, 0.00002]
         #learning_rate = tf.train.piecewise_constant(self.global_epoch, boundaries, values)
-        self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
+        #self.increment_global_epoch_op = tf.assign(self.global_epoch, self.global_epoch+1)
         w_opt = Adagrad()
         updates = w_opt.get_updates(self.loss, self.weights)
         self.weights_train_op = tf.group(*updates, name="weights_train_op")
@@ -327,7 +327,7 @@ class StochasticDropoutNet:
                     struct_step_id = 0
                     epoch_id += 1
                     # Save the variables to disk.
-                    save_path = self.saver.save(self.sess, LOG_DIR+"model_unroll", global_step=epoch_id)
+                    save_path = self.saver.save(self.sess, "{}model_unroll".format(self.LOG_DIR), global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                     
@@ -475,7 +475,7 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
-                    save_path = self.saver.save(self.sess, LOG_DIR+"model_fine", global_step=epoch_id)
+                    save_path = self.saver.save(self.sess, "{}model_fine".format(self.LOG_DIR), global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                 if epoch_id >= num_epochs:

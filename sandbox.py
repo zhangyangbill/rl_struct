@@ -1,7 +1,12 @@
 import os
+import argparse 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
+
+parser = argparse.ArgumentParser()  
+parser.add_argument("LOG_DIR", help="LOG_DIR")
+
 
 import tensorflow as tf
 import numpy as np
@@ -16,11 +21,12 @@ model = StochasticDropoutNet(min_init_dropout_rate = 0.4,
                              valid_batch_size = 500,
                              unroll_steps = 5,
                              num_weight_train_steps = 4,
-                             head = 351)
+                             head = 351,
+                             log_dir = args.LOG_DIR)
 
 #states = tf.train.get_checkpoint_state('/mnt/hdd1/kqian3/rl_struct')
 #checkpoint_paths = states.all_model_checkpoint_paths
-model.saver.restore(model.sess, "/mnt/hdd1/kqian3/rl_struct/model_unroll-350")
+model.saver.restore(model.sess, "{}model_unroll-350".format(args.LOG_DIR))
                              
 inputs_train, targets_train = mnist.train.next_batch(55000)
 inputs_train = inputs_train.reshape((-1, 28, 28, 1))
