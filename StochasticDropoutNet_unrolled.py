@@ -5,6 +5,8 @@ from util import LBFGS, graph_replace, extract_update_dict
 from optimizers import Adagrad, Adam
 from tensorflow.examples.tutorials.mnist import input_data
 
+LOG_DIR = "/mnt/hdd1/kqian3/rl_struct/"
+
 class StochasticDropoutNet:
     def __init__(self,
                  train_batch_size = 32,
@@ -15,7 +17,8 @@ class StochasticDropoutNet:
                  max_dropout_rate = 0.9999,
                  min_init_dropout_rate = 0.2,
                  max_init_dropout_rate = 0.8,
-                 unroll_steps = 3):
+                 unroll_steps = 3,
+                 head = 0):
         ''' Initialize the class
         
         Args:
@@ -57,11 +60,20 @@ class StochasticDropoutNet:
         # build the network
         self.build_graph()
         
+        # determine valid indices for struct param
+        self.valid_index = [tf.stop_gradient(tf.cast(tf.logical_and(tf.reduce_any(tf.equal(var, 1.0),
+                                                                                  axis = 0),
+                                                                    tf.reduce_any(tf.equal(var, 0.0),
+                                                                                  axis = 0)), 
+                                                     tf.float32))
+                            for var in self.keeps]
+        print(self.valid_index)
+        
         # define modified loss for REINFORCE
         self.log_p_per_example \
-        = sum([tf.reduce_sum(tf.log(pp) * (1 - kk) + tf.log(1 - pp) * kk,
+        = sum([tf.reduce_sum((tf.log(pp) * (1 - kk) + tf.log(1 - pp) * kk) * vv,
                              axis = [1,2,3]) 
-               for pp, kk in zip(self.struct_param, self.keeps)])
+               for pp, kk, vv in zip(self.struct_param, self.keeps, self.valid_index)])
         # multiply a phantom term log_p to compute gradient over struct_param
         self.loss = tf.reduce_mean(self.loss_per_example * 
                                    (tf.stop_gradient(1 - self.log_p_per_example)
@@ -264,7 +276,7 @@ class StochasticDropoutNet:
         array_num_tokens_valid = range(num_tokens_valid)
         
         # iterate epochs
-        epoch_id = 0
+        epoch_id = self.head
         batch_id = 0
         struct_step_id = 0
         # shuffle the data
@@ -291,8 +303,9 @@ class StochasticDropoutNet:
                                                                                                   accuracy))
                 # print struct param
                 if batch_id % 100 == 0:
-                    struct_param_value = self.sess.run(self.struct_param, feed_dict = feed_dict)
+                    struct_param_value, valid_index = self.sess.run([self.struct_param, self.valid_index], feed_dict = feed_dict)
                     print('struct_param_value = {}'.format(struct_param_value))
+                    print('valid_index = {}'.format(valid_index))
                     
                     accs = []
                     for i in range(10):
@@ -314,7 +327,7 @@ class StochasticDropoutNet:
                     struct_step_id = 0
                     epoch_id += 1
                     # Save the variables to disk.
-                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_unroll", global_step=epoch_id)
+                    save_path = self.saver.save(self.sess, LOG_DIR+"model_unroll", global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                     
@@ -323,7 +336,7 @@ class StochasticDropoutNet:
                     break
                     
             ###### perform struct training
-            if epoch_id >= 50:
+            if epoch_id > 10:
                 selected_tokens_valid = random.sample(array_num_tokens_valid, 
                                                       self.valid_batch_size)
                 # locate the data for unroll weight training steps
@@ -395,6 +408,11 @@ class StochasticDropoutNet:
         num_epochs - number of epochs
         '''
         
+        # define dataset
+        mnist = input_data.read_data_sets('MNIST_data', one_hot=False)
+        inputs_test, targets_test = mnist.test.next_batch(10000)
+        inputs_test = inputs_test.reshape((-1, 28, 28, 1))
+        
         # determine number of tokens
         num_tokens_train = train_inputs.shape[0]
         num_tokens_valid = valid_inputs.shape[0]
@@ -436,6 +454,17 @@ class StochasticDropoutNet:
                                                                                                   w_id,
                                                                                                   loss,
                                                                                                   accuracy))
+                # print struct param
+                if batch_id % 100 == 0:                 
+                    accs = []
+                    for i in range(10):
+                        feed_dict = {self.inputs: inputs_test[i*1000:(i+1)*1000, ...], 
+                                     self.targets: targets_test[i*1000:(i+1)*1000, ...]}
+                        acc = self.sess.run(self.accuracy, feed_dict=feed_dict)
+                        accs.append(acc)
+                    print('Test accuracy = {}'.format(sum(accs)/10))
+                    
+                
    
                 # increment the counters
                 batch_id = batch_id + 1
@@ -446,7 +475,7 @@ class StochasticDropoutNet:
                     batch_id = 0
                     struct_step_id = 0
                     epoch_id += 1
-                    save_path = self.saver.save(self.sess, "/mnt/hdd1/kqian3/rl_struct/model_fine", global_step=epoch_id)
+                    save_path = self.saver.save(self.sess, LOG_DIR+"model_fine", global_step=epoch_id)
                     print("Model saved in file: %s" % save_path)
                     
                 if epoch_id >= num_epochs:
