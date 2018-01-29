@@ -506,49 +506,49 @@ class StochasticDropoutNet:
         self.inputs = tf.placeholder(tf.float32, shape = [None, 28, 28, 1], name = 'inputs')
         self.targets = tf.placeholder(tf.int32, shape = [None,], name = 'targets')
         
-        hidden = self.conv2d(self.inputs, 5, 5, 64, 
+        hidden = self.conv2d(self.inputs, 5, 5, 1, 
                              var_scope = 'conv0',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = True)
-        hidden = self.conv2d(hidden, 5, 5, 64, 
-                             var_scope = 'conv1',
-                             residual = True,
-                             padding = 'SAME',
-                             act_fun = tf.nn.softplus,
-                             bias = True)
+        #hidden = self.conv2d(hidden, 5, 5, 64, 
+        #                     var_scope = 'conv1',
+        #                     residual = True,
+        #                     padding = 'SAME',
+        #                     act_fun = tf.nn.softplus,
+        #                     bias = True)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
         
-        hidden = self.conv2d(hidden, 5, 5, 128, 
+        hidden = self.conv2d(hidden, 5, 5, 1, 
                              var_scope = 'conv2',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
                              bias = True)
 
-        hidden = self.conv2d(hidden, 5, 5, 128, 
-                             var_scope = 'conv3',
-                             residual = True,
-                             padding = 'SAME',
-                             act_fun = tf.nn.softplus,
-                             bias = True)
+        #hidden = self.conv2d(hidden, 5, 5, 128, 
+        #                     var_scope = 'conv3',
+        #                     residual = True,
+        #                     padding = 'SAME',
+        #                     act_fun = tf.nn.softplus,
+        #                     bias = True)
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
 
         
-        hidden = self.conv2d(hidden, 7, 7, 2048,
+        hidden = self.conv2d(hidden, 7, 7, 1,
                              var_scope = 'fully_connect0',
                              residual = False,
                              padding = 'VALID',
                              act_fun = tf.nn.softplus,
                              bias = True)
-        hidden = self.conv2d(hidden, 1, 1, 2048, 
-                             var_scope = 'fully_connect1',
-                             residual = True,
-                             act_fun = tf.nn.softplus,
-                             bias = True)
+        #hidden = self.conv2d(hidden, 1, 1, 2048, 
+        #                     var_scope = 'fully_connect1',
+        #                     residual = True,
+        #                     act_fun = tf.nn.softplus,
+        #                     bias = True)
 
         logits = self.conv2d(hidden, 1, 1, 10, 
                              var_scope = 'output',
