@@ -6,6 +6,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 parser = argparse.ArgumentParser()  
 parser.add_argument("LOG_DIR", help="LOG_DIR")
+args = parser.parse_args() 
 
 
 import tensorflow as tf
@@ -21,17 +22,17 @@ model = StochasticDropoutNet(min_init_dropout_rate = 0.4,
                              valid_batch_size = 500,
                              unroll_steps = 5,
                              num_weight_train_steps = 4,
-                             head = 351,
+                             head = 401,
                              log_dir = args.LOG_DIR)
 
 #states = tf.train.get_checkpoint_state('/mnt/hdd1/kqian3/rl_struct')
 #checkpoint_paths = states.all_model_checkpoint_paths
-model.saver.restore(model.sess, "{}model_unroll-350".format(args.LOG_DIR))
+model.saver.restore(model.sess, "{}model_unroll-400".format(args.LOG_DIR))
                              
 inputs_train, targets_train = mnist.train.next_batch(55000)
 inputs_train = inputs_train.reshape((-1, 28, 28, 1))
 inputs_valid, targets_valid = mnist.validation.next_batch(5000)
 inputs_valid = inputs_valid.reshape((-1, 28, 28, 1))
 
-model.train_unroll(inputs_train, targets_train, inputs_valid, targets_valid, num_epochs = 651)
+model.train_unroll(inputs_train, targets_train, inputs_valid, targets_valid, num_epochs = 701)
 #model.train_fine_tune(inputs_train, targets_train, inputs_valid, targets_valid, num_epochs = 300)

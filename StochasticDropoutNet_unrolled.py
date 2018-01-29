@@ -38,6 +38,7 @@ class StochasticDropoutNet:
         unroll_steps - the number of unrolled steps
         '''
         self.LOG_DIR = log_dir
+        self.head = head
         
         # arrays recording network weights and structural parameters
         self.weights = []
@@ -127,7 +128,7 @@ class StochasticDropoutNet:
             self.struct_clip_op.append(tf.assign(var, var_clipped))
         
         # Add ops to save and restore all the variables.
-        self.saver = tf.train.Saver(max_to_keep=50)
+        self.saver = tf.train.Saver(max_to_keep=20)
         
         # define session
         self.sess = tf.Session()
