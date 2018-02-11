@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import random
-from util import LBFGS, graph_replace, extract_update_dict
+from util import LBFGS, graph_replace, extract_update_dict, tf_repeat
 from optimizers import Adagrad, Adam
 from tensorflow.examples.tutorials.mnist import input_data
 
@@ -43,7 +43,9 @@ class StochasticDropoutNet:
         # arrays recording network weights and structural parameters
         self.weights = []
         self.struct_param = []
+        self.struct_param_tiled = []
         self.keeps = [] # stores instances of whether each node should be kept
+        self.keeps_tiled = []
         
         # assign configurations
         self.train_batch_size = train_batch_size
@@ -72,13 +74,16 @@ class StochasticDropoutNet:
         
         # define modified loss for REINFORCE
         self.log_p_per_example \
-        = sum([tf.reduce_sum((tf.log(pp) * (1 - kk) + tf.log(1 - pp) * kk) * vv,
+        = sum([tf.reduce_sum((tf.log(pp) * (1 - kk) + tf.log(1 - pp) * kk),
                              axis = [1,2,3]) 
-               for pp, kk, vv in zip(self.struct_param, self.keeps, self.valid_index)])
+               for pp, kk in zip(self.struct_param, self.keeps)])
         # multiply a phantom term log_p to compute gradient over struct_param
+        self.loss_true = tf.reduce_mean(self.loss_per_example)
+        self.log_p_mean = tf.reduce_mean(self.log_p_per_example)
         self.loss = tf.reduce_mean(self.loss_per_example * 
                                    (tf.stop_gradient(1 - self.log_p_per_example)
-                                    + self.log_p_per_example))
+                                    + self.log_p_per_example)) \
+                    - (self.log_p_mean - tf.stop_gradient(self.log_p_mean)) * self.loss_true
         
         
         # define unrolling parameters
@@ -118,6 +123,7 @@ class StochasticDropoutNet:
         
         # Final unrolled loss uses the parameters at the last time step
         self.unrolled_loss = graph_replace(self.loss, cur_update_dict)
+        self.unrolled_loss_true = graph_replace(self.loss_true, cur_update_dict)
         self.struct_train_op = tf.train.AdamOptimizer(learning_rate = 0.01)\
                                 .minimize(self.unrolled_loss,
                                           var_list = self.struct_param)
@@ -161,7 +167,8 @@ class StochasticDropoutNet:
                act_fun = None,
                dropout = True,
                residual = True,
-               bias = False):
+               bias = False,
+               block_shape = [1, 1, 1]):
         '''Perform 2D convolution with stochastic dropout
         
         Args:
@@ -175,6 +182,8 @@ class StochasticDropoutNet:
                   'None' means linear activation function.
         dropout - True if stochastic dropout is applied
         residual - True if ResNet is applied
+        bias - True if bias is applied
+        block_shape - the shape of the output sub-tensor that shares the same pi
         
         Returns:
         output - a tensor of shape [batch_size, width, height, num_filters]
@@ -217,21 +226,35 @@ class StochasticDropoutNet:
         if dropout:
             # generate dropout rate parameters
             with tf.variable_scope(var_scope):
+                pi_shape = [np.ceil(float(o) / float(b))
+                           for o, b in zip(out_shape_list[1:], block_shape)]
                 pi = tf.get_variable('drop_prob', 
-                                     shape = out_shape_list[1:],
+                                     shape = pi_shape,
                                      initializer = tf.random_uniform_initializer(minval = self.min_init_dropout_rate,
                                                                                  maxval = self.max_init_dropout_rate))
                 self.struct_param += [pi]
+                #pi = tf.slice(tf_repeat(pi, block_shape), 
+                #              [0,0,0], 
+                #              out_shape_list[1:])
+                #self.struct_param_tiled += [pi]
 
             # sample from Bernoulli distribution or from default
+            keep_shape = tf.concat([out_shape[0:1], tf.shape(pi)], axis = 0)
+            keep_shape_list = out_shape_list[0:1] + pi.get_shape().as_list()
             keep = tf.placeholder_with_default(
-                  tf.where(tf.random_uniform(out_shape) > pi,
-                           tf.ones(out_shape),
-                           tf.zeros(out_shape)),
-                  shape = out_shape_list)
+                  tf.where(tf.random_uniform(keep_shape) > pi,
+                           tf.ones(keep_shape),
+                           tf.zeros(keep_shape)),
+                  shape = keep_shape_list)
+            
             # stop the gradient to prevent NaN over pi
             keep = tf.stop_gradient(keep)
             self.keeps += [keep]
+            keep = tf.slice(tf_repeat(keep, [1] + block_shape), 
+                            [0,0,0,0], 
+                            [-1] + out_shape_list[1:])
+            print(keep)
+            self.keeps_tiled += [keep]
             
             # generate the final output
             output = tf.multiply(_act_output, keep)
@@ -294,7 +317,7 @@ class StochasticDropoutNet:
                               feed_dict = feed_dict)
                 
                 # output training information
-                loss, accuracy = self.sess.run([self.loss,
+                loss, accuracy = self.sess.run([self.loss_true,
                                                 self.accuracy],
                                                feed_dict = feed_dict)
                 print('Epoch {}, weight train batch {}, step {}, loss = {}, accuracy = {}'.format(epoch_id,
@@ -380,7 +403,7 @@ class StochasticDropoutNet:
                 struct_step_id += 1
                 
                 # ouput training information
-                loss, accuracy, struct_param = self.sess.run([self.loss, 
+                loss, accuracy, struct_param = self.sess.run([self.loss_true, 
                                                               self.accuracy,
                                                               self.struct_param],
                                                              feed_dict = feed_dict)
@@ -447,7 +470,7 @@ class StochasticDropoutNet:
                               feed_dict = feed_dict)
                 
                 # output training information
-                loss, accuracy = self.sess.run([self.loss,
+                loss, accuracy = self.sess.run([self.loss_true,
                                                 self.accuracy],
                                                feed_dict = feed_dict)
                 print('Epoch {}, weight train batch {}, step {}, loss = {}, accuracy = {}'.format(epoch_id,
@@ -494,7 +517,7 @@ class StochasticDropoutNet:
             
             
             # ouput training information
-            loss, accuracy = self.sess.run([self.loss, 
+            loss, accuracy = self.sess.run([self.loss_true, 
                                             self.accuracy],
                                            feed_dict = feed_dict)
             print('Validation loss = {}, accuracy = {}'.format(loss,
@@ -506,49 +529,55 @@ class StochasticDropoutNet:
         self.inputs = tf.placeholder(tf.float32, shape = [None, 28, 28, 1], name = 'inputs')
         self.targets = tf.placeholder(tf.int32, shape = [None,], name = 'targets')
         
-        hidden = self.conv2d(self.inputs, 5, 5, 1, 
+        hidden = self.conv2d(self.inputs, 5, 5, 64, 
                              var_scope = 'conv0',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
-                             bias = True)
-        #hidden = self.conv2d(hidden, 5, 5, 64, 
-        #                     var_scope = 'conv1',
-        #                     residual = True,
-        #                     padding = 'SAME',
-        #                     act_fun = tf.nn.softplus,
-        #                     bias = True)
+                             bias = True,
+                             block_shape = [4, 4, 8])
+        hidden = self.conv2d(hidden, 5, 5, 64, 
+                             var_scope = 'conv1',
+                             residual = True,
+                             padding = 'SAME',
+                             act_fun = tf.nn.softplus,
+                             bias = True,
+                             block_shape = [4, 4, 8])
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
         
-        hidden = self.conv2d(hidden, 5, 5, 1, 
+        hidden = self.conv2d(hidden, 5, 5, 128, 
                              var_scope = 'conv2',
                              residual = False,
                              padding = 'SAME',
                              act_fun = tf.nn.softplus,
-                             bias = True)
+                             bias = True,
+                             block_shape = [2, 2, 16])
 
-        #hidden = self.conv2d(hidden, 5, 5, 128, 
-        #                     var_scope = 'conv3',
-        #                     residual = True,
-        #                     padding = 'SAME',
-        #                     act_fun = tf.nn.softplus,
-        #                     bias = True)
+        hidden = self.conv2d(hidden, 5, 5, 128, 
+                             var_scope = 'conv3',
+                             residual = True,
+                             padding = 'SAME',
+                             act_fun = tf.nn.softplus,
+                             bias = True,
+                             block_shape = [2, 2, 16])
         hidden = tf.nn.max_pool(hidden, ksize=[1, 2, 2, 1],
                                 strides=[1, 2, 2, 1], padding='SAME')
 
         
-        hidden = self.conv2d(hidden, 7, 7, 1,
+        hidden = self.conv2d(hidden, 7, 7, 2048,
                              var_scope = 'fully_connect0',
                              residual = False,
                              padding = 'VALID',
                              act_fun = tf.nn.softplus,
-                             bias = True)
-        #hidden = self.conv2d(hidden, 1, 1, 2048, 
-        #                     var_scope = 'fully_connect1',
-        #                     residual = True,
-        #                     act_fun = tf.nn.softplus,
-        #                     bias = True)
+                             bias = True,
+                             block_shape = [1, 1, 256])
+        hidden = self.conv2d(hidden, 1, 1, 2048, 
+                             var_scope = 'fully_connect1',
+                             residual = True,
+                             act_fun = tf.nn.softplus,
+                             bias = True,
+                             block_shape = [1, 1, 256])
 
         logits = self.conv2d(hidden, 1, 1, 10, 
                              var_scope = 'output',

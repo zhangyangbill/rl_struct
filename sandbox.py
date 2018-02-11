@@ -22,12 +22,12 @@ model = StochasticDropoutNet(min_init_dropout_rate = 0.4,
                              valid_batch_size = 500,
                              unroll_steps = 5,
                              num_weight_train_steps = 4,
-                             head = 401,
+                             head = 0,
                              log_dir = args.LOG_DIR)
 
 #states = tf.train.get_checkpoint_state('/mnt/hdd1/kqian3/rl_struct')
 #checkpoint_paths = states.all_model_checkpoint_paths
-model.saver.restore(model.sess, "{}model_unroll-400".format(args.LOG_DIR))
+#model.saver.restore(model.sess, "{}model_unroll-400".format(args.LOG_DIR))
                              
 inputs_train, targets_train = mnist.train.next_batch(55000)
 inputs_train = inputs_train.reshape((-1, 28, 28, 1))
