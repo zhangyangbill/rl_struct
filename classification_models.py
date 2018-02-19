@@ -75,11 +75,11 @@ def drnn_classification(x,
     # define dRNN structures
     layer_outputs = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations)
     
-       
-    # define the output layer
-    weights = tf.get_variable("w_conv", initializer=tf.random_normal(shape=[hidden_structs[-1], n_classes]))
-    bias = tf.get_variable("b_conv", initializer=tf.random_normal(shape=[n_classes]))
-    # define prediction
+    with tf.variable_scope('multi_dRNN_layer_final'):  
+        # define the output layer
+        weights = tf.get_variable("w_conv", initializer=tf.random_normal(shape=[hidden_structs[-1], n_classes]))
+        bias = tf.get_variable("b_conv", initializer=tf.random_normal(shape=[n_classes]))
+        # define prediction
     pred = tf.add(tf.matmul(layer_outputs[-1,:,:], weights), bias)
 
     return pred

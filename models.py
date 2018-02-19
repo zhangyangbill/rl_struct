@@ -16,7 +16,7 @@ def dRNN(cell, inputs, rate, dim, scope='default'):
     Outputs:
         outputs -- the outputs from the RNN.
     """
-    
+        
     inputs_shape = tf.shape(inputs)
     n_steps = inputs_shape[0]
     batch_size = inputs_shape[1]
