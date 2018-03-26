@@ -31,6 +31,15 @@ def triangular_pmf(x,
     return y
 
 
+
+def general_logpmf(x, logpmf):
+    log_probs = tf.nn.log_softmax(logpmf)
+    
+    return log_probs[0][x]
+    
+
+
+
 def dRNN(cell, inputs, rate, dim, scope='default'):
     """
     This function constructs a layer of dilated RNN.
@@ -117,9 +126,9 @@ def multi_dRNN_with_dilations(cells, inputs, hidden_structs, dilations):
 
 
 
-def _contruct_cells(hidden_structs, cell_type):
+def _construct_cells(hidden_structs, cell_type):
     """
-    This function contructs a list of cells.
+    This function constructs a list of cells.
     """
     # error checking
     if cell_type not in ["RNN", "LSTM", "GRU"]:
@@ -182,6 +191,7 @@ def drnn_classification(x,
                         hidden_structs,
                         dilations,
                         n_classes,
+                        n_evaluate,
                         input_dims=1,
                         cell_type="RNN"):
     """
@@ -203,15 +213,15 @@ def drnn_classification(x,
     assert (len(hidden_structs) == len(dilations))
 
     # construct a list of cells
-    cells = _contruct_cells(hidden_structs, cell_type)
+    cells = _construct_cells(hidden_structs, cell_type)
 
     # define dRNN structures
     layer_outputs = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations)
     
     with tf.variable_scope('multi_dRNN_layer_final'):  
         # define the output layer
-        h = tf.transpose(layer_outputs[-10:,:,:], perm=[1,0,2])
-        pred = _conv1d(h,
+        #h = tf.transpose(layer_outputs[-n_evaluate:,:,:], perm=[1,0,2])
+        pred = _conv1d(layer_outputs[-n_evaluate:,:,:],
                        in_channels=hidden_structs[-1],
                        out_channels=n_classes, 
                        filter_width=1, 
@@ -220,52 +230,254 @@ def drnn_classification(x,
                        activation=None,
                        bias=True,
                        trainable=True)
-        # define the output layer
-        #weights = tf.get_variable("w_conv", initializer=tf.random_normal(shape=[10, hidden_structs[-1], n_classes]))
-        #bias = tf.get_variable("b_conv", initializer=tf.random_normal(shape=[n_classes]))
-        # define prediction
-    #pred = tf.add(tf.matmul(layer_outputs[-10:,:,:], weights), bias)
 
     return pred
 
 
 
-def build_pdrnn(x,
-                hidden_structs,
-                init_params,
-                n_layers,
-                n_steps,
-                n_classes,
-                input_dims=1,
-                cell_type="RNN"):
+
+def set_dilations_1(n_actions, n_layers):
     
     # initialize struct params 
     params = []
+    picks = []
+    for l in xrange(n_layers):
+        with tf.variable_scope('struct_layer_{}'.format(l)):
+            logpmf = tf.get_variable('logpmf', shape=[1,n_actions[l]],
+                                     initializer=tf.constant_initializer(-3.0))
+            params.append(logpmf)
+            
+        idx = tf.cast(tf.multinomial(logpmf, 1), tf.int32)
+        picks.append(idx[0][0])
+                
+    return (picks, params) 
+
+
+
+def multilayer_perceptron(x):
+    
+    w_1 = tf.get_variable('mlp_w_1', shape=[100,10],
+                          initializer=tf.initializers.random_normal(stddev=0.01))
+    b_1 = tf.get_variable('mlp_b_1', shape=[10],
+                          initializer=tf.initializers.random_normal(stddev=0.01))
+    hidden_layer = tf.add(tf.matmul(x, w_1), b_1)
+    
+    w_2 = tf.get_variable('mlp_w_2', shape=[10,510],
+                          initializer=tf.constant_initializer(0.0))
+    b_2 = tf.get_variable('mlp_b_2', shape=[510],
+                          initializer=tf.constant_initializer(1.0/510))
+    output_layer = tf.add(tf.matmul(hidden_layer, w_2), b_2)
+    
+    return output_layer
+
+
+def set_dilations_2(support, n_layers):
+    
+    # initialize struct params 
+    params = []
+    picks = []
     dilations = []
     for l in xrange(n_layers):
         with tf.variable_scope('struct_layer_{}'.format(l)):
-            mu = tf.get_variable('mu', initializer=tf.constant(init_params[l][0]))
-            sigma = tf.get_variable('sigma', initializer=tf.constant(init_params[l][1]))
-            params.append((mu,sigma))
+            if l == 0:
+                logpmf = tf.get_variable('logpmf', shape=[1,support[l][1]],
+                                         initializer=tf.constant_initializer(-0.01))
+            else:
+                logpmf = multilayer_perceptron(logpmf)
+            params.append(logpmf)
             
-        rates = tf.range(tf.ceil(tf.maximum(mu-sigma,0.5)), 
-                         tf.ceil(tf.minimum(mu+sigma,n_steps)))
-        probs = triangular_pmf(rates, mu, sigma, n_steps)
-        probs = tf.expand_dims(probs, 0)
-        idx = tf.multinomial(tf.log(probs), 1)
-        rates = tf.cast(rates, tf.int32)
+        rates = tf.range(support[l][0], support[l][1]+1)  #add 1 to achieve upper limit
+        idx = tf.cast(tf.multinomial(logpmf, 1), tf.int32)
+        picks.append(idx[0][0])
         dilations.append(rates[idx[0][0]])  
         
-    dilations[0] = tf.constant(1)
+    return (picks, dilations, params) 
+
+
+
+
+def set_dilations_3(n_actions, n_layers, hidden_dim=100):
     
-    logits = drnn_classification(x,
-                                 hidden_structs,
-                                 dilations,
-                                 n_classes,
-                                 input_dims,
-                                 cell_type)
+    empty_inputs = [tf.zeros([1,1]) for _ in xrange(n_layers+1)]
     
-    return (logits, params, dilations)
+    cell = tf.nn.rnn_cell.BasicLSTMCell(hidden_dim)
+    outputs, _ = tf.nn.static_rnn(cell, 
+                                  empty_inputs, 
+                                  dtype=tf.float32,
+                                  scope='struct_layer')
+    # convert to tensor
+    h = tf.stack(outputs, axis=1)
+    
+    with tf.variable_scope('struct_layer'):
+        logpmfs = tf.layers.conv1d(inputs=h[:,1:,:],
+                                   filters=max(n_actions),
+                                   kernel_size=1,
+                                   kernel_initializer=tf.zeros_initializer(),
+                                   bias_initializer=tf.constant_initializer(0.001))
+    
+    # initialize struct params 
+    params = []
+    picks = []
+    for l in xrange(n_layers):
+        logpmf = logpmfs[:, l, :n_actions[l]]
+        params.append(logpmf)
+        idx = tf.cast(tf.multinomial(logpmf, 1), tf.int32)
+        picks.append(idx[0][0])
+        
+    return (picks, params) 
+
+
+
+
+def set_dilations_4(n_actions, n_layers):
+    
+    # initialize struct params 
+    params = []
+    picks = []
+    for l in xrange(n_layers):
+        with tf.variable_scope('struct_layer_{}'.format(l)):
+            logpmf = tf.get_variable('logpmf', shape=[1,n_actions[l]+9,1],
+                                     initializer=tf.constant_initializer(-0.5))
+            kernel = tf.contrib.signal.hamming_window(10, False)
+            kernel = tf.expand_dims(tf.expand_dims(kernel,1),1)
+            logpmf = tf.nn.conv1d(logpmf, kernel, 1, 'VALID')
+            params.append(logpmf[:,:,0])
+            
+        idx = tf.cast(tf.multinomial(logpmf[:,:,0], 1), tf.int32)
+        picks.append(idx[0][0])
+                
+    return (picks, params) 
+
+
+
+def make_kernel(supports, n_actions):
+    
+    connections = np.array([1.0/4, 1.0/3, 1.0/2, 1.0, 2.0, 3.0, 4.0])  
+    # [n_actions, n_connections], each row is one dilation rate copied n_connections times
+    out_nodes = np.tile(np.arange(supports[0],supports[1]+1), 
+                        (connections.shape[0],1)).T
+    # multiple and fractions of each possible dilation rate
+    candidates = connections * out_nodes
+    # only integer valued dilation rate, remove out of range rates
+    connectivity = np.equal(np.mod(candidates, 1), 0)
+    partners = (candidates * connectivity).astype(int)
+    partners = partners * (partners<=supports[1])   #actual rates
+    
+    hamm = np.array([0.08, 0.31, 0.77, 1.0, 0.77, 0.31, 0.08])
+    hamm_connect = np.tile(hamm, (n_actions,1)) * (partners>0)
+    values = hamm_connect / np.sum(hamm_connect, 1, keepdims=True) * 3.0
+    values = values.flatten()
+    values = values[values!=0].astype(np.float32)
+    
+    # map dilations to pmf index using 1-d array
+    mapping = -np.ones(supports[1]+1, dtype=int)
+    mapping[supports[0]:supports[1]+1] = np.arange(n_actions)
+    # append row indices to pmf indices in sparse kernel
+    real_idx = np.vstack((np.tile(np.arange(n_actions), 
+                                  (connections.shape[0],1)).flatten('F'), 
+                          mapping[partners].flatten())).T
+    real_idx = real_idx[real_idx[:,1]!=-1]       # remove unused indices
+
+    kernel = tf.sparse_to_dense(real_idx, [n_actions, n_actions], values)
+    
+    return kernel
+
+
+def set_dilations_5(supports, n_actions, n_layers):
+    
+    # initialize struct params 
+    params = []
+    picks = []
+    for l in xrange(n_layers):
+        with tf.variable_scope('struct_layer_{}'.format(l)):
+            logpmf = tf.get_variable('logpmf', shape=[n_actions[l],1],
+                                     initializer=tf.constant_initializer(-1.0))
+            kernel = make_kernel(supports[l], n_actions[l])
+            logpmf = tf.sparse_matmul(kernel, logpmf, a_is_sparse=True)
+            logpmf = tf.transpose(logpmf)
+            params.append(logpmf)
+            
+        idx = tf.cast(tf.multinomial(logpmf, 1), tf.int32)
+        picks.append(idx[0][0])
+                
+    return (picks, params) 
+
+
+
+
+def make_mixed_kernel(supports, n_actions):
+    
+    connections = np.array([1.0/3, 1.0/2, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 3.0])
+    out_nodes = np.tile(np.arange(supports[0],supports[1]+1), 
+                        (connections.shape[0],1)).T
+    candidates = connections * out_nodes
+    connectivity = np.equal(np.mod(candidates, 1), 0)
+    partners = (candidates * connectivity).astype(int)
+    partners = partners + np.tile(np.array([[0,0,-2,-1,0,1,2,0,0]]),(n_actions,1))
+    partners = partners * ((partners<=supports[1]) & (partners>=1))
+    
+    hamm = np.hamming(connections.shape[0])
+    hamm_connect = np.tile(hamm, (n_actions,1)) * (partners>0)
+    # 1
+    hamm_connect[0,5] += hamm_connect[0,7]
+    hamm_connect[0,7] = 0.0
+    hamm_connect[0,6] += hamm_connect[0,8]
+    hamm_connect[0,8] = 0.0
+    partners[0,[7,8]] = 0
+    # 2
+    hamm_connect[1,3] += hamm_connect[1,1]
+    hamm_connect[1,1] = 0.0
+    hamm_connect[1,6] += hamm_connect[1,7]
+    hamm_connect[1,7] = 0.0
+    partners[1,[1,7]] = 0
+    # 3
+    hamm_connect[2,2] += hamm_connect[2,0]
+    hamm_connect[2,0] = 0.0
+    partners[2,0] = 0
+    # 4
+    hamm_connect[3,2] += hamm_connect[3,1]
+    hamm_connect[3,1] = 0.0
+    partners[3,1] = 0
+    
+    values = hamm_connect / np.sum(hamm_connect, 1, keepdims=True) * 3.0
+    values = values.flatten()
+    values = values[values!=0].astype(np.float32)
+    
+    # map dilations to pmf index using 1-d array
+    mapping = -np.ones(supports[1]+1, dtype=int)
+    mapping[supports[0]:supports[1]+1] = np.arange(n_actions)
+    # append row indices to pmf indices in sparse kernel
+    real_idx = np.vstack((np.tile(np.arange(n_actions), 
+                                  (connections.shape[0],1)).flatten('F'), 
+                          mapping[partners].flatten())).T
+    real_idx = real_idx[real_idx[:,1]!=-1]       # remove unused indices
+
+    kernel = tf.sparse_to_dense(real_idx, [n_actions, n_actions], values)
+    
+    return kernel
+
+
+
+
+def set_dilations_6(supports, n_actions, n_layers):
+    
+    # initialize struct params 
+    params = []
+    picks = []
+    for l in xrange(n_layers):
+        with tf.variable_scope('struct_layer_{}'.format(l)):
+            logpmf = tf.get_variable('logpmf', shape=[n_actions[l],1],
+                                     initializer=tf.constant_initializer(-1.0))
+            kernel = make_kernel(supports[l], n_actions[l])
+            logpmf = tf.sparse_matmul(kernel, logpmf, a_is_sparse=True)
+            logpmf = tf.transpose(logpmf)
+            params.append(logpmf)
+            
+        idx = tf.cast(tf.multinomial(logpmf, 1), tf.int32)
+        picks.append(idx[0][0])
+                
+    return (picks, params) 
+
 
 
 
@@ -296,6 +508,34 @@ def compute_loss(logits, labels):
 
 
     
-    
+def list_enqueue(x, lst, L=10):
+    if len(lst) == L:
+        lst.pop(0)
+        lst.append(x)
+    else:
+        lst.append(x)
+        
+def find_closest_element(myNumber, lst):
+    a = min(lst[::-1], key=lambda x:abs(x-myNumber))
+    k = len(lst)-1-lst[::-1].index(a)
+    return k
+
+def list_enqueue_batch(xs, lsts):
+    for i, x in enumerate(xs):
+        list_enqueue(x, lsts[i])
+        
+def find_closest_element_batch(xs, lsts):
+    ks = []
+    for i, x in enumerate(xs):
+        k = find_closest_element(x, lsts[i])
+        ks.append(k)
+    return ks   
+ 
+        
+        
+def make_noisy_mnist(X, Y, T):
+    X = np.expand_dims(np.transpose(X), axis=2)
+    noisy = np.random.uniform(size=(T-784,X.shape[1],1))
+    return (np.concatenate((X, noisy), axis=0), Y[np.newaxis,:])        
     
     

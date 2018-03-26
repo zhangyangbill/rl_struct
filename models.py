@@ -17,10 +17,10 @@ def dRNN(cell, inputs, rate, dim, scope='default'):
         outputs -- the outputs from the RNN.
     """
         
-    inputs_shape = tf.shape(inputs)
-    n_steps = inputs_shape[0]
-    batch_size = inputs_shape[1]
-    input_dims = inputs_shape[2]
+    inputs_shape = tf.shape(inputs[0])
+    n_steps = len(inputs)
+    batch_size = inputs_shape[0]
+    input_dims = inputs_shape[1]
        
         
     dilated_n_steps = tf.cast(tf.ceil(tf.div(tf.cast(n_steps, tf.float32), 

@@ -1,14 +1,15 @@
 import tensorflow as tf
 import numpy as np
-from pdrnn import triangular_pmf, build_pdrnn
+from pdrnn import general_logpmf, drnn_classification, set_dilations_1, set_dilations_4, set_dilations_5, set_dilations_6
 
 
 class StochasticDilateNet:
     def __init__(self,
                  hidden_structs,
-                 init_params,
+                 select_ranges,
                  n_layers,
                  n_classes,
+                 n_evaluate,
                  input_dims=1,
                  cell_type="RNN"):
         ''' Initialize the class
@@ -19,38 +20,51 @@ class StochasticDilateNet:
 
         # assign configurations
         self.hidden_structs = hidden_structs
-        self.init_params = init_params
+        self.select_ranges = select_ranges
         self.n_layers = n_layers
         self.n_classes = n_classes
+        self.n_evaluate = n_evaluate
         self.input_dims = input_dims
         self.cell_type = cell_type
         
         
         # build the network
-        self.inputs = tf.placeholder(tf.float32, shape = [None, None, input_dims], name = 'inputs')
+        self.inputs = tf.placeholder(tf.float32, [None, None, input_dims], name='inputs')
         inputs_shape = tf.shape(self.inputs)
         self.n_steps = tf.cast(inputs_shape[0], tf.float32)
-        self.labels = tf.placeholder(tf.int64, [None, None])
+        self.labels = tf.placeholder(tf.int64, [None, None], name='labels')
+        self.selections = [tf.placeholder(tf.int32, [], name='selections') for _ in xrange(n_layers)]
+        self.dilations = []
+        self.n_actions = []
+        for l in xrange(n_layers):
+            ranges = tf.range(select_ranges[l][0], select_ranges[l][1]+1)  #add 1 to achieve upper limit
+            self.dilations.append(ranges[self.selections[l]]) 
+            self.n_actions.append(select_ranges[l][1]-select_ranges[l][0]+1)
         
-        self.logits, self.struct_vars, self.rates = build_pdrnn(self.inputs,
-                                                                self.hidden_structs,
-                                                                self.init_params,
-                                                                self.n_layers,
-                                                                self.n_steps,
-                                                                self.n_classes,
-                                                                self.input_dims,
-                                                                self.cell_type)
+        #self.picks, self.struct_vars = set_dilations_4(self.n_actions,
+        #                                               self.n_layers)
+        
+        self.picks, self.struct_vars = set_dilations_5(self.select_ranges,
+                                                       self.n_actions,
+                                                       self.n_layers)
+        
+        self.logits = drnn_classification(self.inputs,
+                                          self.hidden_structs,
+                                          self.dilations,
+                                          self.n_classes,
+                                          self.n_evaluate,
+                                          self.input_dims,
+                                          self.cell_type)
                                
         # model weights
         self.weights = [v for v in tf.trainable_variables() if 'multi_dRNN_layer' in v.name]
-        struct_param = [v for v in tf.trainable_variables() if 'struct_layer' in v.name]
-        self.struct_param = struct_param[-2:] # select which params to update
-            
+        self.struct_param = [v for v in tf.trainable_variables() if 'struct_layer' in v.name]
+                            
             
         # define modified loss for REINFORCE
         self.log_p_per_example \
-        = sum([tf.log(triangular_pmf(dd, pp[0], pp[1], self.n_steps)) 
-               for dd, pp in zip(self.rates, self.struct_vars)])
+        = sum([general_logpmf(dd, pp)
+               for dd, pp in zip(self.selections, self.struct_vars)])
         
         
         # multiply a phantom term log_p to compute gradient over struct_param
@@ -58,7 +72,7 @@ class StochasticDilateNet:
                                 labels=self.labels, logits=self.logits, name='cross_entropy_per_example')
         self.loss_for_w = tf.reduce_mean(self.loss_per_example)
         
-        b = tf.get_variable('b', initializer=tf.constant(0.0))
+        b = tf.get_variable('b', initializer=tf.constant(0.0), trainable=False)
         #b = tf.assign(b, (lambda_b*b+(1-lambda_b)*self.loss_for_w))
         self.b = b
         self.loss_for_pi = tf.reduce_mean(self.log_p_per_example * (self.loss_per_example - b))
@@ -73,21 +87,36 @@ class StochasticDilateNet:
                                 .minimize(self.loss_for_w,
                                           var_list = self.weights)
         
-        self.struct_train_op = tf.train.AdagradOptimizer(learning_rate=10)\
+        self.struct_train_op = tf.train.AdamOptimizer(learning_rate=0.005)\
                                 .minimize(self.loss_for_pi,
                                           var_list = self.struct_param)
             
         # clip mu and sigma
-        self.struct_clip_op = []
-        for mu, sigma in self.struct_vars:
-            mu_clipped = tf.clip_by_value(mu, 0.5, self.n_steps-0.5)
-            sigma_clipped = tf.clip_by_value(sigma, 1.0, self.n_steps)
-            structs_clipped = (tf.assign(mu,mu_clipped),
-                               tf.assign(sigma,sigma_clipped))
-            self.struct_clip_op.append(structs_clipped)
+        #self.struct_clip_op = []
+        #for mu, sigma in self.struct_vars:
+        #    mu_clipped = tf.clip_by_value(mu, 0.5, self.n_steps-0.5)
+        #    sigma_clipped = tf.clip_by_value(sigma, 1.0, self.n_steps)
+        #    structs_clipped = (tf.assign(mu,mu_clipped),
+        #                       tf.assign(sigma,sigma_clipped))
+        #    self.struct_clip_op.append(structs_clipped)
                     
         
-        # Add ops to save and restore all the variables.
-        self.saver_for_w = tf.train.Saver(self.weights, max_to_keep=20)
+        # Add ops to save and restore variables.
+        self.saver_for_all = tf.train.Saver(tf.trainable_variables(), max_to_keep=10)
+        self.saver_for_w = tf.train.Saver(self.weights, max_to_keep=10)
+        # save each layer separately
+        self.savers = []
+        for i in range(n_layers-1):
+            vars_list = [v for v in tf.trainable_variables() if 'multi_dRNN_layer_{}'.format(i) in v.name]
+            self.savers.append(tf.train.Saver(vars_list, name='saver_l_{}'.format(i)))
+            
+        # save final layer and post-processing layer together
+        vars_list = [v for v in tf.trainable_variables() 
+                     if 'multi_dRNN_layer_final' in v.name
+                     or 'multi_dRNN_layer_{}'.format(n_layers-1) in v.name]
+        self.savers.append(tf.train.Saver(vars_list, name='saver_l_{}'.format(n_layers-1)))
+        
+        
+        
             
                

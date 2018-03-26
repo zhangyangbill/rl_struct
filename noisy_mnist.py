@@ -1,6 +1,6 @@
 import os
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+import json
+import argparse
 
 import tensorflow as tf
 import hdf5storage as hdst
@@ -12,10 +12,25 @@ from pdrnn import list_enqueue, list_enqueue_batch, \
                   find_closest_element_batch
 from pdrnn import make_noisy_mnist   
 
-logdir = '/mnt/hdd1/kqian3/rl_struct/noisy_mnist_2/'
+parser = argparse.ArgumentParser()  
+parser.add_argument('config', type=str,
+                    help='path to configuration json file')
+args = parser.parse_args() 
+config_filename = args.config
+
+config = json.load(open(config_filename))
+
+logdir = config['logdir']
+gpu_index = config['gpu_index']
+support = config['support']
+pad_to = config['pad_to']
 
 
-support = [(1,395),(1,593),(1,888),(1,1333),(1,2000)]
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]=gpu_index
+
+
+
 n_layers = len(support)
 hidden_structs = [20]*n_layers
 lambda_b = 0.9
@@ -53,7 +68,7 @@ history_steps = []
 
 for step in xrange(1000000):
     X, Y = mnist.train.next_batch(64)
-    inputs_train, target_train = make_noisy_mnist(X, Y, 2000)    
+    inputs_train, target_train = make_noisy_mnist(X, Y, pad_to)    
     
     if step % num_w_op == 0:
         if step != 0:
