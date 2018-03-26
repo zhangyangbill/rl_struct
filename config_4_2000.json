@@ -1,0 +1,6 @@
+{
+    "logdir": "/mnt/hdd1/kqian3/rl_struct/noisy_mnist_3/",
+    "gpu_index": "1",
+    "support": [[1,593],[1,888],[1,1333],[1,2000]],
+    "pad_to": 2000  
+}
