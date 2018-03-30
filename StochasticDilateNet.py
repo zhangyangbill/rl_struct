@@ -1,7 +1,8 @@
 import tensorflow as tf
 import numpy as np
-from pdrnn import general_logpmf, drnn_classification, set_dilations_1, set_dilations_4, set_dilations_5, set_dilations_6
-
+from pdrnn import general_logpmf, drnn_classification
+from pdrnn import set_dilations_1, set_dilations_4, set_dilations_5, set_dilations_6
+from pdrnn import pmf_entropy
 
 class StochasticDilateNet:
     def __init__(self,
@@ -59,6 +60,11 @@ class StochasticDilateNet:
         # model weights
         self.weights = [v for v in tf.trainable_variables() if 'multi_dRNN_layer' in v.name]
         self.struct_param = [v for v in tf.trainable_variables() if 'struct_layer' in v.name]
+        
+        # entropy of pmf
+        self.entropy = []
+        for j in xrange(n_layers):
+            self.entropy.append(pmf_entropy(self.struct_vars[j]))
                             
             
         # define modified loss for REINFORCE
@@ -72,10 +78,9 @@ class StochasticDilateNet:
                                 labels=self.labels, logits=self.logits, name='cross_entropy_per_example')
         self.loss_for_w = tf.reduce_mean(self.loss_per_example)
         
-        b = tf.get_variable('b', initializer=tf.constant(0.0), trainable=False)
+        self.b = tf.get_variable('b', initializer=tf.constant(0.0), trainable=False)
         #b = tf.assign(b, (lambda_b*b+(1-lambda_b)*self.loss_for_w))
-        self.b = b
-        self.loss_for_pi = tf.reduce_mean(self.log_p_per_example * (self.loss_per_example - b))
+        self.loss_for_pi = tf.reduce_mean(self.log_p_per_example * (self.loss_per_example - self.b))
         
         # model evaluation
         correct_pred = tf.equal(tf.argmax(self.logits,-1), self.labels)
@@ -87,18 +92,13 @@ class StochasticDilateNet:
                                 .minimize(self.loss_for_w,
                                           var_list = self.weights)
         
-        self.struct_train_op = tf.train.AdamOptimizer(learning_rate=0.005)\
-                                .minimize(self.loss_for_pi,
-                                          var_list = self.struct_param)
-            
-        # clip mu and sigma
-        #self.struct_clip_op = []
-        #for mu, sigma in self.struct_vars:
-        #    mu_clipped = tf.clip_by_value(mu, 0.5, self.n_steps-0.5)
-        #    sigma_clipped = tf.clip_by_value(sigma, 1.0, self.n_steps)
-        #    structs_clipped = (tf.assign(mu,mu_clipped),
-        #                       tf.assign(sigma,sigma_clipped))
-        #    self.struct_clip_op.append(structs_clipped)
+                    
+        struct_opt = tf.train.AdamOptimizer(learning_rate=0.002)    
+        self.struct_train_ops = []
+        for i in xrange(n_layers):
+            self.struct_train_ops.append(
+                     struct_opt.minimize(self.loss_for_pi,
+                                         var_list=self.struct_param[i]))
                     
         
         # Add ops to save and restore variables.

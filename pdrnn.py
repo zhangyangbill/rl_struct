@@ -32,11 +32,17 @@ def triangular_pmf(x,
 
 
 
-def general_logpmf(x, logpmf):
-    log_probs = tf.nn.log_softmax(logpmf)
+def general_logpmf(x, logits):
+    log_probs = tf.nn.log_softmax(logits)
     
     return log_probs[0][x]
     
+    
+def pmf_entropy(logits):
+    probs = tf.nn.softmax(logits)
+    log_probs = tf.nn.log_softmax(logits)
+    
+    return -tf.reduce_sum(probs*log_probs)
 
 
 

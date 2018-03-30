@@ -91,7 +91,7 @@ for step in xrange(1000000):
                         
             
         if step >= 2*num_w_op:
-            sess.run(model.struct_train_op, feed_dict=feed_dict)    
+            sess.run(model.struct_train_ops, feed_dict=feed_dict)    
             
             
         picks = sess.run(model.picks)
@@ -111,12 +111,19 @@ for step in xrange(1000000):
     if step % num_w_op == num_w_op-1:
         #feed_dict[model.inputs] = inputs_valid
         #feed_dict[model.labels] = target_valid
-        struct_vars, b, loss_value, accuracy = \
-        sess.run([model.struct_vars, 
+        struct_vars, entropy, b, loss_value, accuracy = \
+        sess.run([model.struct_vars, model.entropy,
                   model.b, model.loss_for_w, model.accuracy],
                  feed_dict=feed_dict)
-        print('\n Step {}, Rates {}, b = {}, loss = {}, accuracy = {}\n'.format(
-            step, rates, b, loss_value, accuracy))
+        print('\n Step {}, Rates {}, b = {}, loss = {}, accuracy = {}\n Entropy = {}\n'.format(
+            step, rates, b, loss_value, accuracy, entropy))
+        # check entropy
+        for l in xrange(n_layers):
+            if entropy[l] < 1.5 and not np.isnan(entropy[l]):
+                model.struct_train_ops[l] = tf.no_op('Stop')
+                masks[l][0,np.argmax(struct_vars[l])] = 0.0
+                feed_dict[model.struct_vars[l]] = masks[l]
+        # save logits        
         if step % 100 == 99:
             for k in xrange(bottom, n_layers):
                 hdst.savemat('{}pmf_{}_{}'.format(logdir,step,k),
