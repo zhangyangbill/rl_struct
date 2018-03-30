@@ -3,6 +3,7 @@ import json
 import argparse
 
 import tensorflow as tf
+import numpy as np
 import hdf5storage as hdst
 from StochasticDilateNet import StochasticDilateNet
 from tensorflow.examples.tutorials.mnist import input_data
@@ -65,6 +66,9 @@ bottom = 0
 num_w_op = 10
 history_rates = [[] for _ in xrange(n_layers)]
 history_steps = []
+feed_dict = {}
+
+masks = [np.full((1,support[i][1]),-np.inf) for i in xrange(n_layers)]
 
 for step in xrange(1000000):
     X, Y = mnist.train.next_batch(64)
