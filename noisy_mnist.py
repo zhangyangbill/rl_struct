@@ -94,7 +94,7 @@ for step in xrange(1000000):
             sess.run(model.struct_train_ops, feed_dict=feed_dict)    
             
             
-        picks = sess.run(model.picks)
+        picks = sess.run(model.picks, feed_dict=feed_dict)
         rates = sess.run(model.dilations, feed_dict={s: p for s, p in zip(model.selections, picks)})
         if len(history_steps) >= 1:
             ks = find_closest_element_batch(rates, history_rates)
@@ -102,7 +102,8 @@ for step in xrange(1000000):
             restore_layers(model.savers, ks, logdir, bottom)
             
         
-    feed_dict = {d: r for d, r in zip(model.selections, picks)}    
+    for d, r in zip(model.selections, picks):
+        feed_dict[d] = r   
     feed_dict[model.inputs] = inputs_train
     feed_dict[model.labels] = target_train
         
