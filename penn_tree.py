@@ -21,6 +21,7 @@ config = json.load(open(config_filename))
 logdir = config['logdir']
 gpu_index = config['gpu_index']
 support = config['support']
+seq_len = config['seq_len']
 emb_dim = config['emb_dim']
 optimizer = getattr(tf.train, config['optimizer'])
 lr = config['learning_rate']
@@ -69,7 +70,7 @@ class PTB_data_rl(object):
         return batch_x, batch_y[np.newaxis,:]
 
 data_path = "./char_level_penntree.npz"            
-ptb_data = PTB_data_rl(np.load(data_path), 100)
+ptb_data = PTB_data_rl(np.load(data_path), seq_len)
 
 n_layers = len(support)
 hidden_structs = [256]*n_layers
