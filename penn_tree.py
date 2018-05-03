@@ -21,6 +21,7 @@ config = json.load(open(config_filename))
 logdir = config['logdir']
 gpu_index = config['gpu_index']
 support = config['support']
+emb_dim = config['emb_dim']
 optimizer = getattr(tf.train, config['optimizer'])
 lr = config['learning_rate']
 dropout = config['dropout']
@@ -80,7 +81,7 @@ model = StochasticDilateNet(hidden_structs,
                             n_evaluate=1,
                             optimizer=optimizer(lr),
                             dropout=dropout,
-                            input_dims=64,
+                            input_dims=emb_dim,
                             cell_type="RNN")
 # define session
 sess_config = tf.ConfigProto(allow_soft_placement=True,
