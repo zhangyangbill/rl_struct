@@ -21,6 +21,9 @@ config = json.load(open(config_filename))
 logdir = config['logdir']
 gpu_index = config['gpu_index']
 support = config['support']
+optimizer = getattr(tf.train, config['optimizer'])
+lr = config['learning_rate']
+dropout = config['dropout']
 
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
@@ -75,7 +78,7 @@ model = StochasticDilateNet(hidden_structs,
                             n_layers=n_layers,
                             n_classes=50,
                             n_evaluate=1,
-                            optimizer=tf.train.RMSPropOptimizer(0.003),
+                            optimizer=optimizer(lr),
                             input_dims=64,
                             cell_type="RNN")
 # define session
