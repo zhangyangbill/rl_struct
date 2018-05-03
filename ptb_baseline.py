@@ -77,7 +77,6 @@ model = StochasticDilateNet(hidden_structs,
                             n_classes=50,
                             n_evaluate=1,
                             optimizer=optimizer(lr),
-                            dropout=dropout,
                             input_dims=emb_dim,
                             cell_type="GRU")
 # define session
@@ -101,6 +100,7 @@ for step in range(100000):
     inputs_train, target_train = ptb_data.random_train_batch(64, 100)  
     feed_dict[model.inputs] = inputs_train
     feed_dict[model.labels] = target_train
+    feed_dict[model.dropout] = dropout
         
     _, loss_value, accuracy = sess.run([model.weights_train_op, model.bpc_loss, model.accuracy], 
                                        feed_dict=feed_dict)
@@ -114,6 +114,7 @@ for step in range(100000):
         for inputs_val, target_val in ptb_data.get_validation_batches():
             feed_dict[model.inputs] = inputs_val
             feed_dict[model.labels] = target_val
+            feed_dict[model.dropout] = False
             bpc_cost_ = sess.run(model.bpc_loss, feed_dict=feed_dict) 
             batch_bpcs.append(bpc_cost_)
         validation_bpc = np.mean(batch_bpcs)
