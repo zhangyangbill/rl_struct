@@ -22,6 +22,7 @@ logdir = config['logdir']
 gpu_index = config['gpu_index']
 support = config['support']
 seq_len = config['seq_len']
+valid_batch_size = config['valid_batch_size']
 emb_dim = config['emb_dim']
 optimizer = getattr(tf.train, config['optimizer'])
 lr = config['learning_rate']
@@ -117,7 +118,7 @@ for step in xrange(1000000):
     
     if step % num_w_op == 0:
         if step != 0:
-            inputs_valid, target_valid = ptb_data.random_valid_batch(16384)
+            inputs_valid, target_valid = ptb_data.random_valid_batch(valid_batch_size)
             feed_dict[model.inputs] = inputs_valid
             feed_dict[model.labels] = target_valid
             
@@ -154,7 +155,7 @@ for step in xrange(1000000):
     sess.run(model.weights_train_op, feed_dict=feed_dict)
     
     if step % num_w_op == num_w_op-1:
-        inputs_valid, target_valid = ptb_data.random_valid_batch(16384)
+        inputs_valid, target_valid = ptb_data.random_valid_batch(valid_batch_size)
         feed_dict[model.inputs] = inputs_valid
         feed_dict[model.labels] = target_valid
         struct_vars, entropy, b, loss_value, accuracy = \
