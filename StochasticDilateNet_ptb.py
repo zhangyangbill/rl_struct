@@ -12,7 +12,6 @@ class StochasticDilateNet:
                  n_classes,
                  n_evaluate,
                  optimizer,
-                 dropout,
                  input_dims=1,
                  cell_type="RNN"):
         ''' Initialize the class
@@ -29,18 +28,20 @@ class StochasticDilateNet:
         self.n_evaluate = n_evaluate
         self.input_dims = input_dims
         self.cell_type = cell_type
-        
+                
         
         # build the network
         self.inputs = tf.placeholder(tf.int32, [None, None], name='inputs')
-        char_embeddings = tf.get_variable("char_embeddings", [n_classes, input_dims])
+        self.dropout = tf.placeholder(tf.bool, [], name='dropout')
+        with tf.variable_scope('multi_dRNN_layer_pre'):
+            char_embeddings = tf.get_variable("char_embeddings", [n_classes, input_dims])
         inputs_emb = tf.nn.embedding_lookup(char_embeddings, self.inputs)
-        self.inputs_emb = tf.layers.dropout(inputs_emb, 0.3, training=dropout) 
+        self.inputs_emb = tf.layers.dropout(inputs_emb, 0.3, training=self.dropout) 
         
         inputs_shape = tf.shape(self.inputs)
         self.n_steps = tf.cast(inputs_shape[0], tf.float32)
         
-        self.labels = tf.placeholder(tf.int64, [None, None], name='labels')
+        self.labels = tf.placeholder(tf.int64, [None,], name='labels')
         
         
         self.selections = [tf.placeholder(tf.int32, [], name='selections') for _ in xrange(n_layers)]
@@ -63,6 +64,7 @@ class StochasticDilateNet:
                                           self.dilations,
                                           self.n_classes,
                                           self.n_evaluate,
+                                          self.dropout,
                                           self.input_dims,
                                           self.cell_type)
                                

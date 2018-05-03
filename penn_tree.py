@@ -54,7 +54,7 @@ class PTB_data_rl(object):
         batch_x = self.data_dict['train'][selections]
         batch_y = self.data_dict['train'][offsets+n_steps]
         
-        return batch_x, batch_y[np.newaxis,:]
+        return batch_x, batch_y
     
     def random_valid_batch(self, batch_size):
         """
@@ -68,7 +68,7 @@ class PTB_data_rl(object):
         batch_x = self.data_dict['valid'][selections]
         batch_y = self.data_dict['valid'][offsets+n_steps]
         
-        return batch_x, batch_y[np.newaxis,:]
+        return batch_x, batch_y
 
 data_path = "./char_level_penntree.npz"            
 ptb_data = PTB_data_rl(np.load(data_path), seq_len)
@@ -82,7 +82,6 @@ model = StochasticDilateNet(hidden_structs,
                             n_classes=50,
                             n_evaluate=1,
                             optimizer=optimizer(lr),
-                            dropout=dropout,
                             input_dims=emb_dim,
                             cell_type="RNN")
 # define session
@@ -121,6 +120,7 @@ for step in xrange(1000000):
             inputs_valid, target_valid = ptb_data.random_valid_batch(valid_batch_size)
             feed_dict[model.inputs] = inputs_valid
             feed_dict[model.labels] = target_valid
+            feed_dict[model.dropout] = False
             
             loss_ = sess.run(model.bpc_loss, feed_dict=feed_dict)
             if step == num_w_op:
@@ -151,6 +151,7 @@ for step in xrange(1000000):
         feed_dict[d] = r   
     feed_dict[model.inputs] = inputs_train
     feed_dict[model.labels] = target_train
+    feed_dict[model.dropout] = dropout
         
     sess.run(model.weights_train_op, feed_dict=feed_dict)
     
@@ -158,6 +159,7 @@ for step in xrange(1000000):
         inputs_valid, target_valid = ptb_data.random_valid_batch(valid_batch_size)
         feed_dict[model.inputs] = inputs_valid
         feed_dict[model.labels] = target_valid
+        feed_dict[model.dropout] = False
         struct_vars, entropy, b, loss_value, accuracy = \
         sess.run([model.struct_vars, model.entropy,
                   model.b, model.bpc_loss, model.accuracy],

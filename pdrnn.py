@@ -109,7 +109,7 @@ def dRNN(cell, inputs, rate, dim, scope='default'):
 
 
 
-def multi_dRNN_with_dilations(cells, inputs, hidden_structs, dilations):
+def multi_dRNN_with_dilations(cells, inputs, hidden_structs, dilations, dropout=False):
     """
     This function constucts a multi-layer dilated RNN. 
     Inputs:
@@ -123,11 +123,12 @@ def multi_dRNN_with_dilations(cells, inputs, hidden_structs, dilations):
     x = copy.copy(inputs)
     _, _, init_dim = x.get_shape().as_list()
     dims = [init_dim] + hidden_structs[:-1]
-    l = 0
-    for cell, dilation, dim in zip(cells, dilations, dims):
+    for l, (cell, dilation, dim) in enumerate(zip(cells, dilations, dims)):
         scope_name = "multi_dRNN_layer_%d" % l
         x = dRNN(cell, x, dilation, dim, scope=scope_name)
-        l += 1
+        if l < len(dilations)-1:
+            x = tf.layers.dropout(x, 0.1, training=dropout) 
+        
     return x
 
 
@@ -198,6 +199,7 @@ def drnn_classification(x,
                         dilations,
                         n_classes,
                         n_evaluate,
+                        dropout=False,
                         input_dims=1,
                         cell_type="RNN"):
     """
@@ -222,34 +224,38 @@ def drnn_classification(x,
     cells = _construct_cells(hidden_structs, cell_type)
 
     # define dRNN structures
-    layer_outputs = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations)
+    layer_outputs = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations, dropout)
     
     with tf.variable_scope('multi_dRNN_layer_final'): 
-        h = tf.transpose(layer_outputs[-4:,:,:], perm=[1,0,2])
-        h = _conv1d(h,
-                    in_channels=hidden_structs[-1],
-                    out_channels=hidden_structs[-1], 
-                    filter_width=4, 
-                    padding='valid', 
-                    gain=np.sqrt(2), 
-                    activation=tf.tanh,
-                    bias=True,
-                    trainable=True)
+        #h = tf.transpose(layer_outputs[-4:,:,:], perm=[1,0,2])
+        #h = _conv1d(h,
+        #            in_channels=hidden_structs[-1],
+        #            out_channels=hidden_structs[-1], 
+        #            filter_width=4, 
+        #            padding='valid', 
+        #            gain=np.sqrt(2), 
+        #            activation=tf.tanh,
+        #            bias=True,
+        #            trainable=True)
         
         # define the output layer
         #h = tf.transpose(layer_outputs[-n_evaluate:,:,:], perm=[1,0,2])
-        pred = _conv1d(h,
-                       in_channels=hidden_structs[-1],
-                       out_channels=n_classes, 
-                       filter_width=1, 
-                       padding='valid', 
-                       gain=1, 
-                       activation=None,
-                       bias=True,
-                       trainable=True)
+        #pred = _conv1d(layer_outputs[-n_evaluate:,:,:],
+        #               in_channels=hidden_structs[-1],
+        #               out_channels=n_classes, 
+        #               filter_width=1, 
+        #               padding='valid', 
+        #               gain=1, 
+        #               activation=None,
+        #               bias=True,
+        #               trainable=True)
+        
+        weights = tf.Variable(tf.random_normal(shape=[hidden_structs[-1], n_classes]))
+        bias = tf.Variable(tf.random_normal(shape=[n_classes]))
+        # define prediction
+        pred = tf.add(tf.matmul(layer_outputs[-1,:,:], weights), bias)
 
-    return tf.transpose(pred, perm=[1,0,2])
-
+    return pred
 
 
 
