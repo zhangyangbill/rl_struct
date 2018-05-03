@@ -224,10 +224,21 @@ def drnn_classification(x,
     # define dRNN structures
     layer_outputs = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations)
     
-    with tf.variable_scope('multi_dRNN_layer_final'):  
+    with tf.variable_scope('multi_dRNN_layer_final'): 
+        h = tf.transpose(layer_outputs[-4:,:,:], perm=[1,0,2])
+        h = _conv1d(h,
+                    in_channels=hidden_structs[-1],
+                    out_channels=hidden_structs[-1], 
+                    filter_width=4, 
+                    padding='valid', 
+                    gain=np.sqrt(2), 
+                    activation=tf.tanh,
+                    bias=True,
+                    trainable=True)
+        
         # define the output layer
         #h = tf.transpose(layer_outputs[-n_evaluate:,:,:], perm=[1,0,2])
-        pred = _conv1d(layer_outputs[-n_evaluate:,:,:],
+        pred = _conv1d(h,
                        in_channels=hidden_structs[-1],
                        out_channels=n_classes, 
                        filter_width=1, 
@@ -237,7 +248,7 @@ def drnn_classification(x,
                        bias=True,
                        trainable=True)
 
-    return pred
+    return tf.transpose(pred, perm=[1,0,2])
 
 
 
