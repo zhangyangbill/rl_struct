@@ -79,6 +79,7 @@ model = StochasticDilateNet(hidden_structs,
                             n_classes=50,
                             n_evaluate=1,
                             optimizer=optimizer(lr),
+                            dropout=dropout,
                             input_dims=64,
                             cell_type="RNN")
 # define session

@@ -12,6 +12,7 @@ class StochasticDilateNet:
                  n_classes,
                  n_evaluate,
                  optimizer,
+                 dropout,
                  input_dims=1,
                  cell_type="RNN"):
         ''' Initialize the class
@@ -34,7 +35,7 @@ class StochasticDilateNet:
         self.inputs = tf.placeholder(tf.int32, [None, None], name='inputs')
         char_embeddings = tf.get_variable("char_embeddings", [n_classes, input_dims])
         inputs_emb = tf.nn.embedding_lookup(char_embeddings, self.inputs)
-        self.inputs_emb = tf.layers.dropout(inputs_emb, 0.3, training=True) 
+        self.inputs_emb = tf.layers.dropout(inputs_emb, 0.3, training=dropout) 
         
         inputs_shape = tf.shape(self.inputs)
         self.n_steps = tf.cast(inputs_shape[0], tf.float32)
