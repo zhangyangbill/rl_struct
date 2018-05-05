@@ -70,7 +70,7 @@ class PTB_data_rl(object):
         
         return batch_x, batch_y
 
-data_path = "./char_level_penntree.npz"            
+data_path = "./penn_tree_clean.npz"            
 ptb_data = PTB_data_rl(np.load(data_path), seq_len)
 
 n_layers = len(support)
