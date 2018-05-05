@@ -65,7 +65,7 @@ class PTB_data(object):
             batch_y = self.data_dict['test'][offset_base+self.n_steps]
             yield batch_x, batch_y
 
-data_path = "./char_level_penntree.npz"            
+data_path = "./penn_tree_clean.npz"             
 ptb_data = PTB_data(np.load(data_path), seq_len, valid_batch_size)
 
 n_layers = len(support)
