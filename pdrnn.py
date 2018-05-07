@@ -200,7 +200,6 @@ def drnn_classification(x,
                         n_classes,
                         n_evaluate,
                         dropout=False,
-                        input_dims=1,
                         cell_type="RNN"):
     """
     This function construct a multilayer dilated RNN for classifiction.  

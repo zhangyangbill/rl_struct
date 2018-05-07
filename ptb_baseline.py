@@ -74,7 +74,7 @@ lambda_b = 0.9
 model = StochasticDilateNet(hidden_structs,
                             support,
                             n_layers=n_layers,
-                            n_classes=50,
+                            n_classes=49,
                             n_evaluate=1,
                             optimizer=optimizer(lr),
                             input_dims=emb_dim,
@@ -108,7 +108,7 @@ for step in range(100000):
     if step % 10 == 0:
         print('Step {}, loss = {}, accuracy = {}'.format(step, loss_value, accuracy))
 
-    if step % 100 == 0 and step != 0:
+    if step % 300 == 0 and step != 0:
         # validation performance
         batch_bpcs = []
         for inputs_val, target_val in ptb_data.get_validation_batches():

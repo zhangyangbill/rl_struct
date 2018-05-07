@@ -65,7 +65,6 @@ class StochasticDilateNet:
                                           self.n_classes,
                                           self.n_evaluate,
                                           self.dropout,
-                                          self.input_dims,
                                           self.cell_type)
                                
         # model weights
