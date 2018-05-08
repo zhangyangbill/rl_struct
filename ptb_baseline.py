@@ -91,6 +91,15 @@ sess = tf.Session(config=sess_config)
 # initialize all the parameters
 sess.run(tf.global_variables_initializer())
 
+
+
+states = tf.train.get_checkpoint_state(logdir)
+if states is not None:
+    checkpoint_paths = states.all_model_checkpoint_paths
+    model.saver_for_w.recover_last_checkpoints(checkpoint_paths)
+    model.saver_for_w.restore(sess, tf.train.latest_checkpoint(logdir))
+
+
 feed_dict = {d: r for d, r in zip(model.dilations, [1,2,4,8,16,32,64])}  
 
 batch_size = 64
@@ -108,7 +117,7 @@ for step in range(100000):
     if step % 10 == 0:
         print('Step {}, loss = {}, accuracy = {}'.format(step, loss_value, accuracy))
 
-    if step % 300 == 0 and step != 0:
+    if step % 10 == 0 and step != 0:
         # validation performance
         batch_bpcs = []
         for inputs_val, target_val in ptb_data.get_validation_batches():

@@ -79,7 +79,7 @@ lambda_b = 0.9
 model = StochasticDilateNet(hidden_structs,
                             support,
                             n_layers=n_layers,
-                            n_classes=50,
+                            n_classes=49,
                             n_evaluate=1,
                             optimizer=optimizer(lr),
                             input_dims=emb_dim,
