@@ -1,6 +1,5 @@
 import os
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+import argparse
 
 import numpy as np
 import tensorflow as tf
@@ -11,7 +10,16 @@ n_steps = 100 #length of input sequence
 input_dims = 64 # char embedding dimension
 n_classes = 49 # vocab size
 batch_size = 64
-logdir = "/mnt/hdd1/kqian3/rl_struct/penn_tree_shiyu/"
+
+parser = argparse.ArgumentParser()  
+parser.add_argument('logdir', type=str)
+parser.add_argument('deviceId', type=str)
+args = parser.parse_args() 
+
+logdir = args.logdir
+
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"]=args.deviceId
 
 # model config
 cell_type = "GRU"
