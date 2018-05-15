@@ -33,10 +33,11 @@ class StochasticDilateNet:
         # build the network
         self.inputs = tf.placeholder(tf.int32, [None, None], name='inputs')
         self.dropout = tf.placeholder(tf.bool, [], name='dropout')
+        
         with tf.variable_scope('multi_dRNN_layer_pre'):
             char_embeddings = tf.get_variable("char_embeddings", [n_classes, input_dims])
-        inputs_emb = tf.nn.embedding_lookup(char_embeddings, self.inputs)
-        self.inputs_emb = tf.layers.dropout(inputs_emb, 0.3, training=self.dropout) 
+        self.inputs_emb = tf.nn.embedding_lookup(char_embeddings, self.inputs)
+        #self.inputs_emb = tf.layers.dropout(inputs_emb, 0.3, training=self.dropout) ###?????????????????????????????
         
         inputs_shape = tf.shape(self.inputs)
         self.n_steps = tf.cast(inputs_shape[0], tf.float32)
@@ -55,11 +56,11 @@ class StochasticDilateNet:
         #self.picks, self.struct_vars = set_dilations_4(self.n_actions,
         #                                               self.n_layers)
         
-        self.picks, self.struct_vars = set_dilations_5(self.select_ranges,
+        self.picks, self.struct_vars = set_dilations_6(self.select_ranges,
                                                        self.n_actions,
                                                        self.n_layers)
         
-        self.logits = drnn_classification(self.inputs_emb,
+        self.logits, self.test_out = drnn_classification(self.inputs_emb,
                                           self.hidden_structs,
                                           self.dilations,
                                           self.n_classes,
@@ -92,6 +93,7 @@ class StochasticDilateNet:
         self.b = tf.get_variable('b', initializer=tf.constant(0.0), trainable=False)
         #b = tf.assign(b, (lambda_b*b+(1-lambda_b)*self.loss_for_w))
         self.loss_for_pi = tf.reduce_mean(self.log_p_per_example * (self.loss_per_example/np.log(2.0) - self.b))
+        self.loss_for_pi_ = self.log_p_per_example * (self.bpc_loss - self.b)
         
         # model evaluation
         correct_pred = tf.equal(tf.argmax(self.logits,-1), self.labels)
@@ -100,9 +102,9 @@ class StochasticDilateNet:
         
         # define optimizers
         #optimizer = tf.train.RMSPropOptimizer(0.003)
-        gvs = optimizer.compute_gradients(self.bpc_loss, var_list=self.weights)
-        capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
-        self.weights_train_op = optimizer.apply_gradients(capped_gvs)
+        self.gvs = optimizer.compute_gradients(self.bpc_loss, var_list=self.weights)
+        self.capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in self.gvs]
+        self.weights_train_op = optimizer.apply_gradients(self.capped_gvs)
                     
         struct_opt = tf.train.AdamOptimizer(learning_rate=0.005)    
         self.struct_train_ops = []

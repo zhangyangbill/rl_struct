@@ -120,16 +120,16 @@ def multi_dRNN_with_dilations(cells, inputs, hidden_structs, dilations, dropout=
         x -- A list of 'n_steps' tensors, as the outputs for the top layer of the multi-dRNN.
     """
     assert (len(cells) == len(dilations))
+    hs = []
     x = copy.copy(inputs)
+    hs.append(x)
     _, _, init_dim = x.get_shape().as_list()
     dims = [init_dim] + hidden_structs[:-1]
     for l, (cell, dilation, dim) in enumerate(zip(cells, dilations, dims)):
         scope_name = "multi_dRNN_layer_%d" % l
         x = dRNN(cell, x, dilation, dim, scope=scope_name)
-        if l < len(dilations)-1:
-            x = tf.layers.dropout(x, 0.1, training=dropout) 
-        
-    return x
+        hs.append(x)
+    return x, hs
 
 
 
@@ -223,7 +223,7 @@ def drnn_classification(x,
     cells = _construct_cells(hidden_structs, cell_type)
 
     # define dRNN structures
-    layer_outputs = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations, dropout)
+    layer_outputs, test_out = multi_dRNN_with_dilations(cells, x, hidden_structs, dilations, dropout)
     
     with tf.variable_scope('multi_dRNN_layer_final'): 
         #h = tf.transpose(layer_outputs[-4:,:,:], perm=[1,0,2])
@@ -254,7 +254,7 @@ def drnn_classification(x,
         # define prediction
         pred = tf.add(tf.matmul(layer_outputs[-1,:,:], weights), bias)
 
-    return pred
+    return pred, test_out
 
 
 
@@ -436,7 +436,7 @@ def make_mixed_kernel(supports, n_actions):
     connectivity = np.equal(np.mod(candidates, 1), 0)
     partners = (candidates * connectivity).astype(int)
     partners = partners + np.tile(np.array([[0,0,-2,-1,0,1,2,0,0]]),(n_actions,1))
-    partners = partners * ((partners<=supports[1]) & (partners>=1))
+    partners = partners * ((partners<=supports[1]) & (partners>=supports[0]))
     
     hamm = np.hamming(connections.shape[0])
     hamm_connect = np.tile(hamm, (n_actions,1)) * (partners>0)
@@ -490,7 +490,7 @@ def set_dilations_6(supports, n_actions, n_layers):
         with tf.variable_scope('struct_layer_{}'.format(l)):
             logpmf = tf.get_variable('logpmf', shape=[n_actions[l],1],
                                      initializer=tf.constant_initializer(-1.0))
-            kernel = make_kernel(supports[l], n_actions[l])
+            kernel = make_mixed_kernel(supports[l], n_actions[l])
             logpmf = tf.sparse_matmul(kernel, logpmf, a_is_sparse=True)
             logpmf = tf.transpose(logpmf)
             params.append(logpmf)

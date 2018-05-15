@@ -5,6 +5,7 @@ import argparse
 import tensorflow as tf
 import numpy as np
 from StochasticDilateNet_ptb import StochasticDilateNet
+import cPickle as pickle
 
 
 parser = argparse.ArgumentParser()  
@@ -105,25 +106,40 @@ feed_dict = {d: r for d, r in zip(model.dilations, [1,2,4,8,16,32,64])}
 batch_size = 64
 losses = []
 
+
 for step in range(100000):
     inputs_train, target_train = ptb_data.random_train_batch(64, 100)  
     feed_dict[model.inputs] = inputs_train
     feed_dict[model.labels] = target_train
-    feed_dict[model.dropout] = dropout
+    #feed_dict[model.dropout] = dropout
         
-    _, loss_value, accuracy = sess.run([model.weights_train_op, model.bpc_loss, model.accuracy], 
+    _, loss_value = sess.run([model.weights_train_op, model.bpc_loss], 
+                              feed_dict=feed_dict)
+    if step == 0:
+        b = loss_value
+    else:
+        b = 0.9*b + 0.1*loss_value
+    if np.abs(loss_value-b) > 0.6:
+        hs, gvs, capped_gvs = sess.run([model.test_out, model.gvs, model.capped_gvs], 
                                        feed_dict=feed_dict)
-        
+        probe_dict = {'inputs':inputs_train, 
+                      'target':target_train,
+                      'hs':hs,
+                      'gvs':gvs,
+                      'capped_gvs':capped_gvs}
+        with open('{}probe_{}.p'.format(logdir, step), "wb") as fp:
+            pickle.dump(probe_dict, fp)
+                
     if step % 10 == 0:
-        print('Step {}, loss = {}, accuracy = {}'.format(step, loss_value, accuracy))
+        print('Step {}, loss = {}'.format(step, loss_value))
 
-    if step % 10 == 0 and step != 0:
+    if step % 300 == 0 and step != 0:
         # validation performance
         batch_bpcs = []
         for inputs_val, target_val in ptb_data.get_validation_batches():
             feed_dict[model.inputs] = inputs_val
             feed_dict[model.labels] = target_val
-            feed_dict[model.dropout] = False
+            #feed_dict[model.dropout] = False
             bpc_cost_ = sess.run(model.bpc_loss, feed_dict=feed_dict) 
             batch_bpcs.append(bpc_cost_)
         validation_bpc = np.mean(batch_bpcs)
